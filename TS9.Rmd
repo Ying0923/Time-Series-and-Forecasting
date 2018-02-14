@@ -1,0 +1,1097 @@
+---
+title: "Predict431-TS9-CODE"
+
+output: word_document
+    
+---
+<style>
+body {
+    position: absolute;
+    left: 10px;}
+</style>
+
+<style type="text/css">
+
+.main-container {
+  max-width: 1280px;
+}
+
+</style>
+
+
+```{r setup, include=FALSE}
+
+knitr::opts_chunk$set(echo = FALSE, warning =FALSE, error=FALSE,message=FALSE)
+
+
+```
+
+
+
+```{r}
+
+setwd("C:/Users/Admin/Dropbox/Northwestern University/Predict413/Assignment 9/")
+
+```
+
+
+```{r}
+# load libraries
+library(PerformanceAnalytics)
+# library(quantmod)
+library(rugarch)
+library(car)
+library(FinTS)
+library(rmgarch)
+options(digits=4)
+
+```
+
+
+```{r}
+
+# devtools::install_github("joshuaulrich/quantmod", ref="157_yahoo_502")
+library(quantmod)
+
+
+```
+
+```{r}
+
+covEWMA <-
+function(factors, lambda=0.96, return.cor=FALSE) {
+## Inputs:
+## factors    N x K numerical factors data.  data is class data.frame
+##            N is the time length and K is the number of the factors.  
+## lambda     scalar. exponetial decay factor between 0 and 1. 
+## return.cor Logical, if TRUE then return EWMA correlation matrices
+## Output:  
+## cov.f.ewma  array. dimension is N x K x K.
+## comments:
+## 1. add optional argument cov.start to specify initial covariance matrix
+## 2. allow data input to be data class to be any rectangular data object
+  
+
+if (is.data.frame(factors)){
+  factor.names  = colnames(factors)
+  t.factor      = nrow(factors)
+  k.factor      = ncol(factors)
+  factors       = as.matrix(factors)
+  t.names       = rownames(factors)
+} else {
+  stop("factor data should be saved in data.frame class.") 
+}
+if (lambda>=1 || lambda <= 0){
+  stop("exponential decay value lambda should be between 0 and 1.")
+} else {
+  cov.f.ewma = array(,c(t.factor,k.factor,k.factor))
+  cov.f = var(factors)  # unconditional variance as EWMA at time = 0 
+  FF = (factors[1,]- mean(factors)) %*% t(factors[1,]- mean(factors))
+  cov.f.ewma[1,,] = (1-lambda)*FF  + lambda*cov.f
+  for (i in 2:t.factor) {
+    FF = (factors[i,]- mean(factors)) %*% t(factors[i,]- mean(factors))
+    cov.f.ewma[i,,] = (1-lambda)*FF  + lambda*cov.f.ewma[(i-1),,]
+  }
+    
+}
+  # 9/15/11: add dimnames to array
+  dimnames(cov.f.ewma) = list(t.names, factor.names, factor.names)
+  
+  if(return.cor) {
+   cor.f.ewma = cov.f.ewma
+   for (i in 1:dim(cor.f.ewma)[1]) {
+    cor.f.ewma[i, , ] = cov2cor(cov.f.ewma[i, ,])
+   }
+   return(cor.f.ewma)
+  } else{
+      return(cov.f.ewma)  
+  }
+}
+
+```
+
+
+```{r}
+# download data
+symbol.vec = c("MSFT", "^GSPC")
+getSymbols(symbol.vec, from ="2000-01-03", to = "2012-04-03")
+
+# View(MSFT)
+# View(GSPC)
+# colnames(MSFT)
+# start(MSFT)
+# end(MSFT)
+
+
+```
+
+```{r}
+
+# extract adjusted closing prices
+MSFT = MSFT[, "MSFT.Adjusted", drop=F]
+GSPC = GSPC[, "GSPC.Adjusted", drop=F]
+
+options(digits=8)
+library("fBasics")
+basicStats(MSFT)
+basicStats(GSPC)
+
+```
+
+
+```{r}
+par(mfcol=c(2,2))
+
+h5<-hist(MSFT, breaks=20, main="MSFT", xlab="Adjusted Prices ")
+
+h6<-hist(GSPC, breaks=20, main="GSPC", xlab="Adjusted Prices  ")
+
+
+
+qqnorm(MSFT); qqline(MSFT)
+qqnorm(GSPC); qqline(GSPC)
+
+```
+
+```{r}
+# plot prices
+plot(MSFT)
+plot(GSPC)
+
+
+```
+
+```{r}
+# calculate log-returns for GARCH analysis
+MSFT.ret = CalculateReturns(MSFT, method="log")
+GSPC.ret = CalculateReturns(GSPC, method="log")
+
+```
+
+```{r}
+par(mfcol=c(2,2))
+
+h5<-hist(MSFT.ret, breaks=20, main="Microsoft ", xlab="log-returns")
+
+h6<-hist(GSPC.ret, breaks=20, main="S&P 500 ", xlab="log-returns")
+
+
+
+qqnorm(MSFT.ret); qqline(MSFT.ret)
+qqnorm(GSPC.ret); qqline(GSPC.ret)
+
+```
+
+```{r}
+
+# remove first NA observation
+MSFT.ret = MSFT.ret[-1,]
+GSPC.ret = GSPC.ret[-1,]
+colnames(MSFT.ret) ="MSFT"
+colnames(GSPC.ret) = "GSPC"
+
+
+```
+
+
+```{r}
+
+# create combined data series
+MSFT.GSPC.ret = merge(MSFT.ret,GSPC.ret)
+
+```
+
+
+
+```{r}
+
+basicStats_combined <- basicStats(MSFT.GSPC.ret)
+
+library("knitr","xtable")
+
+kable(basicStats_combined[c('Mean', 'Median', 'Stdev', 'Skewness', 'Kurtosis', 'Minimum', 'Maximum'), ],
+      format="pandoc", caption="Basic Statistics of MSFT.GSPC.ret")
+
+
+
+```
+
+
+```{r}
+
+# plot returns
+plot(MSFT.ret)
+plot(GSPC.ret)
+
+```
+
+
+```{r}
+# scatterplot of returns
+plot( coredata(GSPC.ret), coredata(MSFT.ret), xlab="GSPC", ylab="MSFT",
+      type="p", pch=16, lwd=2, col="blue")
+abline(h=0,v=0)
+
+
+```
+
+
+### MSFT EDA
+```{r}
+# Check for serial correlations
+
+#-------------------------------------
+
+
+
+# Are there serial correlations in the log return?
+
+# ACF plot of series for checking serial correlations in series
+
+# ACF plot of abs(series) for checking dependence in series
+
+par(mfcol = c(1, 1))
+
+acf(MSFT.ret, 25, xlim = c(1, 25), ylim = c(-0.2, 0.4))
+
+acf(abs(MSFT.ret), 25, xlim = c(1, 25), ylim = c(-0.2, 0.4))
+
+
+
+```
+
+
+
+```{r}
+
+# Ljung-Box test
+
+# If the result is significant (p-value < alpha), reject null hypothesis of 
+
+
+
+Box.test(MSFT.ret, lag = 10, type = "Ljung")
+
+Box.test(abs(MSFT.ret), lag = 10, type = "Ljung")
+
+```
+
+```{r}
+
+# Test for ARCH effects
+
+#-------------------------------------
+
+
+
+# Is the mean (expected return) significantly different from zero?
+
+t.test(MSFT.ret)
+
+
+
+# Fail to reject H0: based on p-value, do not subtract sample mean from mean
+
+#   equation when testing for ARCH effects
+
+```
+
+```{r}
+
+# Ljung-Box test
+
+#------------------
+
+# Use squared series of residuals to check for conditional heteroscedasticity
+
+# H0: first m lags of ACF of squared series = 0
+
+# If we reject H0:, series shows strong ARCH effects
+
+
+
+# Test at lag 10 - reject H0:
+
+Box.test(MSFT.ret^2, lag = 10, type = "Ljung")
+
+```
+
+
+
+### GSPC EDA
+```{r}
+# Check for serial correlations
+
+#-------------------------------------
+
+
+
+# Are there serial correlations in the log return?
+
+# ACF plot of series for checking serial correlations in series
+
+# ACF plot of abs(series) for checking dependence in series
+
+par(mfcol = c(1, 1))
+
+acf(GSPC.ret, 25, xlim = c(1, 25), ylim = c(-0.2, 0.4))
+
+acf(abs(GSPC.ret), 25, xlim = c(1, 25), ylim = c(-0.2, 0.4))
+
+
+
+```
+
+
+
+```{r}
+
+# Ljung-Box test
+
+# If the result is significant (p-value < alpha), reject null hypothesis of 
+
+
+
+Box.test(GSPC.ret, lag = 10, type = "Ljung")
+
+
+
+```
+
+```{r}
+
+# Test for ARCH effects
+
+#-------------------------------------
+
+
+
+# Is the mean (expected return) significantly different from zero?
+
+t.test(GSPC.ret)
+
+
+
+# Fail to reject H0: based on p-value, do not subtract sample mean from mean
+
+#   equation when testing for ARCH effects
+
+```
+
+```{r}
+
+# Ljung-Box test
+
+#------------------
+
+# Use squared series of residuals to check for conditional heteroscedasticity
+
+# H0: first m lags of ACF of squared series = 0
+
+# If we reject H0:, series shows strong ARCH effects
+
+
+
+# Test at lag 10 - reject H0:
+
+Box.test(GSPC.ret^2, lag = 10, type = "Ljung")
+
+```
+
+
+```{r}
+
+# MSFT
+
+#------------------
+
+
+
+# Build model
+library(fGarch)
+msft.log.m1 <- garchFit(~1 + garch(5, 0), data = MSFT.ret, trace = F)
+
+
+
+# Summary stats
+
+# Includes Ljung-Box results for:
+
+#   Standardized residuals - adequacy of model mean equation
+
+#   Standardized residuals squared - adequacy of model variance equation
+
+summary(msft.log.m1)
+
+```
+
+
+
+```{r}
+
+# Examine residuals for normality assumption
+
+# Assign standardized residuals
+
+msft.log.m1.res <- residuals(msft.log.m1, standardize = T)
+
+hist(msft.log.m1.res , breaks=20, main="MSFT log return ARCH(5) residuals", xlab="Model Residuals")
+
+
+# Q-Q Plot
+
+qqnorm(msft.log.m1.res); qqline(msft.log.m1.res)
+
+```
+
+
+```{r}
+
+# SPX
+
+#------------------
+
+
+
+# Build model
+
+spx.log.m1 <- garchFit(~1 + garch(5, 0), data = GSPC.ret, trace = F)
+
+
+
+# Summary stats
+
+# Includes Ljung-Box results for:
+
+#   Standardized residuals - adequacy of model mean equation
+
+#   Standardized residuals squared - adequacy of model variance equation
+
+summary(spx.log.m1)
+
+```
+
+```{r}
+
+# Examine residuals for normality assumption
+
+# Assign standardized residuals
+
+spx.log.m1.res <- residuals(spx.log.m1, standardize = T)
+
+
+hist(spx.log.m1.res , breaks=20, main="GSPC log return ARCH(5) residuals", xlab="Model Residuals")
+
+
+# Q-Q Plot
+
+qqnorm(spx.log.m1.res); qqline(spx.log.m1.res)
+
+```
+
+
+```{r}
+
+
+
+# Estimate a GARCH(1,1) model for each of the series. What is the sum of the 
+
+#   ARCH and GARCH coefficients?
+
+# MSFT
+
+#------------------
+
+
+
+# Build model
+
+msft.log.m2 <- garchFit(~garch(1, 1), data = MSFT.ret, trace = F)
+
+
+
+# Summary stats
+
+# Includes Ljung-Box results for:
+
+#   Standardized residuals - adequacy of model mean equation
+
+#   Standardized residuals squared - adequacy of model variance equation
+
+summary(msft.log.m2)
+
+```
+
+
+
+```{r}
+
+
+# Examine residuals for normality assumption
+
+# Assign standardized residuals
+
+msft.log.m2.res <- residuals(msft.log.m2, standardize = T)
+
+hist(msft.log.m2.res , breaks=20, main="MSFT log return GARCH(1,1)  residuals", xlab="Model Residuals")
+
+
+# Q-Q Plot
+
+qqnorm(msft.log.m2.res); qqline(msft.log.m2.res)
+
+
+```
+
+
+```{r}
+
+# GSPC.ret
+
+#------------------
+
+
+
+# Build model
+
+spx.log.m2 <- garchFit(~garch(1, 1), data = GSPC.ret, trace = F)
+
+
+summary(spx.log.m2)
+
+```
+
+
+```{r}
+
+
+# Examine residuals for normality assumption
+
+# Assign standardized residuals
+
+spx.log.m2.res <- residuals(spx.log.m2, standardize = T)
+
+
+hist(spx.log.m2.res , breaks=20, main="GSPC log return GARCH(1,1) residuals", xlab="Model Residuals")
+
+
+# Q-Q Plot
+
+qqnorm(spx.log.m2.res); qqline(spx.log.m2.res)
+
+```
+
+
+```{r}
+
+#
+# compute rolling correlations
+#
+# chart.RollingCorrelation(MSFT.ret, GSPC.ret, width=20)
+
+cor.fun = function(x){
+  cor(x)[1,2]
+}
+
+cov.fun = function(x){
+  cov(x)[1,2]
+}
+
+roll.cov = rollapply(as.zoo(MSFT.GSPC.ret), FUN=cov.fun, width=20,
+                     by.column=FALSE, align="right")
+roll.cor = rollapply(as.zoo(MSFT.GSPC.ret), FUN=cor.fun, width=20,
+                     by.column=FALSE, align="right")
+par(mfrow=c(2,1))
+plot(roll.cov, main="20-day rolling covariances",
+     ylab="covariance", lwd=2, col="blue")
+grid()
+abline(h=cov(MSFT.GSPC.ret)[1,2], lwd=2, col="red")
+plot(roll.cor, main="20-day rolling correlations",
+     ylab="correlation", lwd=2, col="blue")
+grid()
+abline(h=cor(MSFT.GSPC.ret)[1,2], lwd=2, col="red")
+par(mfrow=c(1,1))
+
+```
+
+
+```{r}
+#
+# calculate EWMA covariances and correlations
+#
+lambda <- 0.94
+cov.ewma <- covEWMA(as.data.frame(MSFT.GSPC.ret), lambda=lambda)
+
+## 2. extract conditional variance and correlation
+### conditional variance
+MSFT.GSPC.cond.cov <- cov.ewma[,2,1];
+### conditional correlation
+t <- length(cov.ewma[,1,1]);
+MSFT.GSPC.cond.cor<- rep(0,t);
+for (i in 1:t) {
+  MSFT.GSPC.cond.cor[i]<- cov2cor(cov.ewma[i,,])[1,2];
+}
+### Plots
+par(mfrow=c(2,1))
+plot(x=time(as.zoo(MSFT.GSPC.ret)), y=MSFT.GSPC.cond.cov,
+     type="l", xlab="Time", ylab="Covariance", lwd=2, col="blue",
+     main="EWMA Covariance between MSFT and S&P500");
+grid()
+abline(h=cov(MSFT.GSPC.ret)[1,2], lwd=2, col="red")
+plot(x=time(as.zoo(MSFT.GSPC.ret)), y=MSFT.GSPC.cond.cor,
+     type="l", xlab="Time", ylab="Correlation", lwd=2, col="blue",
+     main="EWMA Correlation between MSFT and S&P500");
+grid()
+abline(h=cor(MSFT.GSPC.ret)[1,2], lwd=2, col="red")
+par(mfrow=c(1,1))
+
+```
+
+
+
+```{r}
+
+# compute rolling covariances and correlations using longer window
+roll.cov = rollapply(as.zoo(MSFT.GSPC.ret), FUN=cov.fun, width=252,
+                     by.column=FALSE, align="right")
+roll.cor = rollapply(as.zoo(MSFT.GSPC.ret), FUN=cor.fun, width=252,
+                     by.column=FALSE, align="right")
+par(mfrow=c(2,1))
+plot(roll.cov, main="252-day rolling covariances",
+     ylab="covariance", lwd=2, col="blue")
+grid()
+abline(h=cov(MSFT.GSPC.ret)[1,2], lwd=2, col="red")
+plot(roll.cor, main="252-day rolling correlations",
+     ylab="correlation", lwd=2, col="blue")
+grid()
+abline(h=cor(MSFT.GSPC.ret)[1,2], lwd=2, col="red")
+par(mfrow=c(1,1))
+
+
+```
+
+
+```{r}
+
+# compute EWMA covariances and correlations using longer half-life
+half.life = 125 
+lambda = exp(log(0.5)/half.life)
+cov.ewma <- covEWMA(as.data.frame(MSFT.GSPC.ret), lambda=lambda)
+
+
+## 2. extract conditional variance and correlation
+### conditional variance
+MSFT.GSPC.cond.cov <- cov.ewma[,2,1]
+### conditional correlation
+t <- length(cov.ewma[,1,1])
+MSFT.GSPC.cond.cor<- rep(0,t)
+for (i in 1:t) {
+  MSFT.GSPC.cond.cor[i]<- cov2cor(cov.ewma[i,,])[1,2]
+}
+### Plots
+par(mfrow=c(2,1))
+plot(x=time(as.zoo(MSFT.GSPC.ret)), y=MSFT.GSPC.cond.cov,
+     type="l", xlab="Time", ylab="Covariance", lwd=2, col="blue",
+     main="EWMA Covariance between MSFT and S&P500")
+grid()
+abline(h=cov(MSFT.GSPC.ret)[1,2], lwd=2, col="red")
+plot(x=time(as.zoo(MSFT.GSPC.ret)), y=MSFT.GSPC.cond.cor,
+     type="l", xlab="Time", ylab="Correlation", lwd=2, col="blue",
+     main="EWMA Correlation between MSFT and S&P500")
+grid()
+abline(h=cor(MSFT.GSPC.ret)[1,2], lwd=2, col="red")
+par(mfrow=c(1,1))
+
+
+```
+
+
+
+```{r}
+
+# Q1D
+
+#======================================
+
+
+
+# Use dccfit() from {rmgarch}, and estimate the normal-DCC(1,1) model
+
+# Comment on the estimated coefficients and the model fit
+
+
+
+# Specification of DCC model for each series - univariate normal GARCH(1,1)
+#
+# DCC estimation
+#
+
+# univariate normal GARCH(1,1) for each series
+garch11.spec = ugarchspec(mean.model = list(armaOrder = c(0,0)), 
+                          variance.model = list(garchOrder = c(1,1), 
+                          model = "sGARCH"), 
+                          distribution.model = "norm")
+
+# dcc specification - GARCH(1,1) for conditional correlations
+
+# Multivariate specification of DCC specification for conditional correlations
+dcc.garch11.spec = dccspec(uspec = multispec( replicate(2, garch11.spec) ), 
+                           dccOrder = c(1,1), 
+                           distribution = "mvnorm")
+
+# Validate specification of DCC model
+dcc.garch11.spec
+
+```
+```{r}
+
+# Build model
+
+dcc.fit = dccfit(dcc.garch11.spec, data = MSFT.GSPC.ret)
+
+# Explore available parameters and results
+class(dcc.fit)
+slotNames(dcc.fit)
+names(dcc.fit@mfit)
+names(dcc.fit@model)
+
+# many extractor functions - see help on DCCfit object
+# coef, likelihood, rshape, rskew, fitted, sigma, 
+# residuals, plot, infocriteria, rcor, rcov
+# show, nisurface
+
+# show dcc fit
+dcc.fit
+
+```
+
+
+```{r}
+
+# Examine residuals for normality assumption
+
+# Assign standardized residuals
+
+
+
+
+hist(dcc.fit@mfit$stdresid , breaks=20, main="dcc.fit residuals", xlab="Model Residuals")
+
+
+# Q-Q Plot
+
+qqnorm(dcc.fit@mfit$stdresid); qqline(dcc.fit@mfit$stdresid)
+
+```
+
+
+```{r}
+
+"ccm" <- function(x,lags=12,level=FALSE){
+# Compute and plot the cross-correlation matrices.
+# lags: number of lags used.
+# level: logical unit for printing.
+# Created by R.S. Tsay, March 2009
+#
+if(!is.matrix(x))x=as.matrix(x)
+T=nrow(x)
+k=ncol(x)
+if(lags < 1)lags=1
+
+# remove the sample means
+av=apply(x,2,mean)
+y=x
+for (j in 1:k){
+y[,j]=x[,j]-av[j]
+}
+V1=cov(y)
+print("Covariance matrix:")
+print(V1,digits=3)
+se=sqrt(diag(V1))
+SD=diag(1/se)
+S0=SD%*%V1%*%SD
+ksq=k*k
+wk=matrix(0,ksq,(lags+1))
+wk[,1]=c(S0)
+j=0
+cat("CCM at lag: ",j,"\n")
+print(S0,digits=3)
+y=y%*%SD
+crit=2.326/sqrt(T)
+cat("Simplified matrix:","\n")
+for (j in 1:lags){
+y1=y[1:(T-j),]
+y2=y[(j+1):T,]
+Sj=t(y2)%*%y1/T
+Smtx=matrix(".",k,k)
+for (ii in 1:k){
+for (jj in 1:k){
+if(Sj[ii,jj] > crit)Smtx[ii,jj]="+"
+if(Sj[ii,jj] < -crit)Smtx[ii,jj]="-"
+}
+}
+cat("CCM at lag: ",j,"\n")
+for (ii in 1:k){
+cat(Smtx[ii,],"\n")
+}
+if(level){
+cat("Correlations:","\n")
+print(Sj,digits=3)
+}
+wk[,(j+1)]=c(Sj)
+
+}
+par(mfcol=c(k,k))
+if(k > 3)par(mfcol=c(3,3))
+tdx=c(0,1:lags)
+jcnt=0
+for (j in 1:ksq){
+plot(tdx,wk[j,],type='h',xlab='lag',ylab='ccf',ylim=c(-1,1))
+abline(h=c(0))
+crit=2/sqrt(T)
+abline(h=c(crit),lty=2)
+abline(h=c(-crit),lty=2)
+jcnt=jcnt+1
+if(jcnt==9){
+jcnt=0
+cat("Hit return for more: ","\n")
+readline()
+}
+#
+}
+par(mfcol=c(1,1))
+
+ccm<-list(ccm=wk)
+
+}
+
+```
+
+
+
+
+```{r, fig.height=10, fig.width=10}
+#
+
+# Obtain the lags of the sample cross-correlation matricies of series
+
+# Using level = T will output values and simplified notation
+
+# ACFs are on primary diagonal and CCFs are on off diagonal
+
+ccm(dcc.fit@mfit$stdresid,5)
+
+
+```
+
+
+
+```{r}
+
+"mq" <- function(x,lag=24){
+# Compute multivariate Ljung-Box test statistics
+#
+if(!is.matrix(x))x=as.matrix(x)
+nr=nrow(x)
+nc=ncol(x)
+g0=var(x)
+ginv=solve(g0)
+qm=0.0
+cat("        m,  Q(m)    and p-value:","\n")
+df = 0
+pvs=NULL
+for (i in 1:lag){
+  x1=x[(i+1):nr,]
+  x2=x[1:(nr-i),]
+  g = cov(x1,x2)
+  g = g*(nr-i-1)/(nr-1)
+  h=t(g)%*%ginv%*%g%*%ginv
+  qm=qm+nr*nr*sum(diag(h))/(nr-i)
+  df=df+nc*nc
+  pv=1-pchisq(qm,df)
+  pvs=c(pvs,pv)
+  print(c(i,qm,pv),digits=5)
+}
+par(mfcol=c(1,1))
+plot(pvs,ylim=c(0,1),main="p-values of Ljung-Box statistics")
+abline(h=c(0))
+lines(rep(0.05,lag),lty=2,col='blue')
+}
+
+```
+
+```{r}
+
+
+# Test the following hypotheses using a 5% significance level:
+
+#   H0: p1 = ... = pn = 0
+
+#   Ha: pi != 0 for some i, where {1, ..., n}
+
+mq(dcc.fit@mfit$stdresid)
+
+```
+
+
+
+
+
+
+```{r}
+# Q1E
+
+#======================================
+
+
+
+# Plot the estimated in-sample conditional covariances and correlations of the
+
+#   fitted model; compare the EWMA and rolling estimates
+
+# Note: par(mfrow()) will not work here, as that only works for {base} graphics
+
+# plot method
+
+#  plot(dcc.fit)
+
+
+# Make a plot selection (or 0 to exit): 
+#   
+# 1:   Conditional Mean (vs Realized Returns)
+# 2:   Conditional Sigma (vs Realized Absolute Returns)
+# 3:   Conditional Covariance
+# 4:   Conditional Correlation
+# 5:   EW Portfolio Plot with conditional density VaR limits
+
+
+```
+
+```{r}
+# conditional sd of each series
+plot(dcc.fit, which=2)
+
+```
+
+
+```{r}
+# conditional correlation
+plot(dcc.fit, which=4, main="", sub="")
+
+
+```
+
+```{r}
+# extracting correlation series
+ts.plot(rcor(dcc.fit)[1,2,])
+
+```
+
+
+
+```{r}
+# Q1F
+
+#======================================
+
+
+
+# Compute and plot the first 100 h-step ahead forecasts of the conditional
+
+#   covariance and correlation of the fitted model
+
+
+#
+# forecasting conditional volatility and correlations
+#
+
+# Build model
+
+dcc.fcst = dccforecast(dcc.fit, n.ahead=100)
+
+# Explore available parameters and results
+
+class(dcc.fcst)
+slotNames(dcc.fcst)
+class(dcc.fcst@mforecast)
+names(dcc.fcst@mforecast)
+
+# many method functions - see help on DCCforecast class
+# rshape, rskew, fitted, sigma, plot, rcor, rcov, show
+
+
+```
+
+```{r}
+
+
+# show forecasts
+dcc.fcst
+
+```
+
+
+```{r}
+
+# Method 1
+
+# Note: second part fails, see Method 2 below
+
+#------------------
+
+# Conditional Covariances
+
+plot(dcc.fcst, which = 3)
+
+```
+
+
+```{r}
+
+# Conditional Correlations
+
+# plot(dcc.fcst, which = 4)
+
+
+```
+
+
+
+```{r}
+# Method 2
+
+#------------------
+
+# Conditional Covariances
+
+dcc.fcst.cov <- rcov(dcc.fcst)
+
+dcc.fcst.cov <- dcc.fcst.cov[[1]]
+
+ts.plot(dcc.fcst[1, 2, ],
+
+        main = "GSPC & MSFT: DCC Conditional Covariance Forecast", 
+
+        ylab = "Correlation", xlab = "Time (Trading Days)")
+
+
+```
+
+
+
+```{r}
+
+# Conditional Correlations
+
+dcc.fcst.cor <- rcor(dcc.fcst)
+
+dcc.fcst.cor <- dcc.fcst.cor[[1]]
+
+ts.plot(dcc.fcst.cor[1, 2, ], 
+
+        main = "GSPC & MSFT: DCC Conditional Correlation Forecast", 
+
+        ylab = "Correlation", xlab = "Time (Trading Days)")
+
+```
+

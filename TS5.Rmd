@@ -1,0 +1,1530 @@
+    
+---
+title: "Predict431-TS5-CODE"
+
+output: word_document
+    
+---
+<style>
+body {
+    position: absolute;
+    left: 10px;}
+</style>
+
+<style type="text/css">
+
+.main-container {
+  max-width: 1280px;
+}
+
+</style>
+
+
+```{r setup, include=FALSE}
+
+knitr::opts_chunk$set(echo = FALSE, warning =FALSE, error=FALSE,message=FALSE)
+
+
+```
+
+
+```{r}
+
+setwd("C:/Users/Admin/Dropbox/Northwestern University/Predict413/Assignment 5/")
+
+
+MonthlyMarketLiquidity <- read.table("m-PastorStambaugh.txt",header=T)
+
+# str(MonthlyMarketLiquidity)
+# View(MonthlyMarketLiquidity)
+# write.csv(MonthlyMarketLiquidity, file = "MonthlyMarketLiquidity.csv")
+```
+
+
+
+```{r}
+
+
+require(fBasics)    # for calculations 
+require(fpp)        # for data 
+require(knitr)      # for table output
+require(ggplot2)    # for graphing
+require(ggfortify)  # for graphing time series
+require(ggthemes)   # for graphing beautifully
+require(gridExtra)  # for laying out graphs
+
+```
+
+
+
+#### Q1:EDA
+
+
+Data Summaries and Tables
+
+```{r}
+
+library("fBasics")
+basicStats_MML <- basicStats(MonthlyMarketLiquidity)
+
+library("knitr","xtable")
+
+kable(basicStats_MML[c('Mean', 'Stdev', 'Skewness', 'Kurtosis', 'Minimum', 'Maximum'), -1],
+      format="pandoc", caption="Basic Statistics of the Monthly Market Liquidity")
+
+
+```
+
+
+
+
+```{r, echo=FALSE, warning =FALSE, error=FALSE,message=FALSE}
+
+#############################################################
+## PS_LEVEL Histogram
+
+
+par(mfcol=c(3,2))
+
+x1<-MonthlyMarketLiquidity$PS_LEVEL
+
+h1<-hist(MonthlyMarketLiquidity$PS_LEVEL, breaks=20, main=" PS_LEVEL Histogram", xlab="PS_LEVEL")
+# axis(side=1, at=seq(0,82,1), pos=0, las=0)
+
+abline(v = mean(x1 , na.rm = TRUE), col = "red", lwd = 2, lty = 2)
+abline(v = median(x1, na.rm = TRUE), col = "green", lwd = 2, lty = 2)
+
+xfit1<-seq(min(x1, na.rm = TRUE),max(x1, na.rm = TRUE), length=40)
+yfit1<-dnorm(xfit1, mean = mean(x1, na.rm = TRUE), sd=sd(x1, na.rm = TRUE))
+yfit1<-yfit1*diff(h1$mids[1:2]*length(x1))
+lines(xfit1, yfit1, col="blue",lwd=2)
+
+
+#############################################################
+## PS_INNOV Histogram
+
+x2<-MonthlyMarketLiquidity$PS_INNOV
+
+h2<-hist(MonthlyMarketLiquidity$PS_INNOV, breaks=20, main=" PS_INNOV Histogram", xlab="PS_INNOV")
+# axis(side=1, at=seq(0,82,1), pos=0, las=0)
+
+abline(v = mean(x2 , na.rm = TRUE), col = "red", lwd = 2, lty = 2)
+abline(v = median(x2, na.rm = TRUE), col = "green", lwd = 2, lty = 2)
+
+xfit2<-seq(min(x2, na.rm = TRUE),max(x2, na.rm = TRUE), length=40)
+yfit2<-dnorm(xfit2, mean = mean(x2, na.rm = TRUE), sd=sd(x2, na.rm = TRUE))
+yfit2<-yfit2*diff(h2$mids[1:2]*length(x2))
+lines(xfit2, yfit2, col="blue",lwd=2)
+
+
+#############################################################
+## PS_VWF Histogram
+
+x3<-MonthlyMarketLiquidity$PS_VWF
+
+h3<-hist(MonthlyMarketLiquidity$PS_VWF, breaks=20, main=" PS_VWF Histogram", xlab="PS_VWF")
+# axis(side=1, at=seq(0,82,1), pos=0, las=0)
+
+abline(v = mean(x3 , na.rm = TRUE), col = "red", lwd = 2, lty = 2)
+abline(v = median(x3, na.rm = TRUE), col = "green", lwd = 2, lty = 2)
+
+xfit3<-seq(min(x3, na.rm = TRUE),max(x3, na.rm = TRUE), length=40)
+yfit3<-dnorm(xfit3, mean = mean(x3, na.rm = TRUE), sd=sd(x2, na.rm = TRUE))
+yfit3<-yfit3*diff(h3$mids[1:2]*length(x3))
+lines(xfit3, yfit3, col="blue",lwd=2)
+
+
+
+qqnorm(MonthlyMarketLiquidity$PS_LEVEL); qqline(MonthlyMarketLiquidity$PS_LEVEL)
+qqnorm(MonthlyMarketLiquidity$PS_INNOV); qqline(MonthlyMarketLiquidity$PS_INNOV)
+qqnorm(MonthlyMarketLiquidity$PS_VWF); qqline(MonthlyMarketLiquidity$PS_VWF)
+
+par(mfcol=c(1,1))
+```
+
+
+
+Scatter Plots and Pairwise Correlation
+
+```{r}
+
+# What are the pairwise associations between the variables? 
+plot(MonthlyMarketLiquidity[,2:4])
+
+
+library(car)
+scatterplot.matrix(~PS_LEVEL+PS_INNOV+PS_VWF, data=MonthlyMarketLiquidity,
+  	main="Scatter Plots")
+
+```
+
+
+```{r}
+library(dplyr) 
+MML.cor <- MonthlyMarketLiquidity %>% 
+  dplyr::select(PS_LEVEL:PS_VWF) %>% 
+  cor(use = "pairwise.complete.obs") 
+
+library(corrplot) 
+corrplot(MML.cor, type = "full", method = "number", tl.srt=45, tl.col = "black", title = "") 
+
+```
+
+
+#### Q1: (b)
+
+(b) Build a time series model for xt (the mean equation) using the model-building process. Write the equation of the model to be ???tted. 
+
+
+
+
+```{r}
+# Convert to time series
+
+PS.Level <- MonthlyMarketLiquidity$PS_LEVEL
+
+ts.PS_LEVEL <- ts(PS.Level, start = c(1962,8), frequency = 12)
+
+# Plot the time series
+
+plot(ts.PS_LEVEL, xlab = "Year", ylab = "PS_LEVEL", main = "PS_LEVEL")
+```
+
+
+```{r, fig.width=8,fig.height=5}
+
+
+library ("forecast")
+
+decomp_PS_LEVEL_stl = stl(ts.PS_LEVEL, s.window="periodic") # calculate seasonal component of the data
+deseasonal_PS_LEVEL <- seasadj(decomp_PS_LEVEL_stl) # decomposing the series and removing the seasonality
+plot(decomp_PS_LEVEL_stl)
+
+```
+
+
+
+```{r}
+
+par(mfcol = c(2, 2))
+
+
+
+# ACF & PACF
+
+acf(PS.Level)
+
+pacf(PS.Level)
+
+
+
+# ACF & PACF - first differenced
+
+acf(diff(PS.Level))
+
+pacf(diff(PS.Level))
+
+
+
+par(mfcol = c(1, 1))
+
+
+
+
+```
+
+
+
+```{r}
+# Determine if differencing is required
+
+ndiffs(PS.Level, test = "adf")
+
+adf.test(PS.Level, alternative = "stationary")
+
+
+
+# Build a time series model for the data; write down the fitted model
+
+PS.Level.m1 <- arima(PS.Level, order = c(5, 0, 0))
+
+PS.Level.m1
+
+```
+
+
+```{r}
+
+# Is the model adequate? Why?
+
+
+
+# Comments on Pormanteau test or Ljung-Box test:
+
+# Large p-value suggests residuals are white noise (uncorrelated)
+
+# If the result is significant (p-value < alpha), reject null hypothesis of 
+
+# model adequacy
+
+# If there is no correlation in your residuals, then you have sufficiently 
+
+# modeled everything
+
+# If both results suggest model adequacy, use AIC or BIC as the next criterion
+
+# for model selection; these also consider parsimony
+
+
+
+# Summary stats
+
+summary(PS.Level.m1)
+
+tsdiag(PS.Level.m1, gof = 25)
+
+```
+
+
+```{r}
+# Pormanteau test or Ljung-Box test & plot
+
+# Set fitdf = p + q from arima(order = (p, d, q))
+
+# Monthly series so test lags at 12 and 24
+
+Box.test(residuals(PS.Level.m1), lag = 12, fitdf = 5, type = "Ljung")
+
+Box.test(residuals(PS.Level.m1), lag = 24, fitdf = 5, type = "Ljung")
+
+# Plot; start at value of fitdf()
+
+plot(sapply(5:100, function(i) Box.test(residuals(PS.Level.m1), lag = i, 
+
+                                        fitdf = 5)$p.value), type = "l")
+```
+
+
+```{r}
+
+# ACF & PACF of residuals - first lag removed
+
+par(mfcol = c(2, 1))
+
+acf(PS.Level.m1$residuals, 25, xlim = c(1, 25), ylim = c(-0.2, 0.4))
+
+pacf(PS.Level.m1$residuals, 25, ylim = c(-0.2, 0.4))
+
+par(mfcol = c(1, 1))
+```
+
+
+
+
+
+```{r}
+# Plot
+
+plot(forecast(PS.Level.m1))
+
+```
+
+
+
+
+```{r}
+# Removing coefficients: t-ratio
+
+# Test the t-ratio of each, remove if abs(x) < 1.96
+
+
+
+# Compute the standard error (se)
+
+PS.Level.m1.se <- sqrt(diag(vcov(PS.Level.m1)))
+PS.Level.m1.se
+
+```
+
+
+
+```{r}
+# Now calculate the t-ratio
+
+# Use 1.96 as cutoff - 5% significance level
+
+PS.Level.m1.tratio <- abs(PS.Level.m1$coef / PS.Level.m1.se)
+
+PS.Level.m1.tratio
+
+```
+
+
+#### Q1 : (C)
+```{r}
+# Identify the largest outlier in the series
+
+# Refine the fitted model (Q2B) by using an indicator for the outlier
+
+which.min(PS.Level.m1$residuals)
+
+which.max(PS.Level.m1$residuals)
+
+```
+
+
+
+```{r}
+
+
+# Identify value of outliers
+
+PS.Level.m1$residuals[303]
+
+PS.Level.m1$residuals[441]
+
+
+```
+
+
+```{r}
+
+# Create empty data set to remove outlier with arima(xreg = )
+
+# xreg requires a vector or matrix with the same number of rows as x
+
+length(PS.Level)
+
+i303 <- rep(0,605)
+
+i303[303] <- 1
+
+```
+
+
+```{r}
+# Refit the model
+
+PS.Level.m2 <- arima(PS.Level, order = c(5, 0, 0), xreg = i303)
+
+PS.Level.m2
+
+```
+
+
+```{r}
+
+# Summary stats
+
+summary(PS.Level.m2)
+
+tsdiag(PS.Level.m2, gof = 25)
+
+```
+
+
+
+```{r}
+# Pormanteau test or Ljung-Box test & plot
+
+# Set fitdf = p + q from arima(order = (p, d, q))
+
+# Monthly series so test lags at 12 and 24
+
+Box.test(residuals(PS.Level.m2), lag = 12, fitdf = 5, type = "Ljung")
+
+Box.test(residuals(PS.Level.m2), lag = 24, fitdf = 5, type = "Ljung")
+
+# Plot; start at value of fitdf()
+
+plot(sapply(5:100, function(i) Box.test(residuals(PS.Level.m2), lag = i,  fitdf = 5)$p.value), type = "l")
+
+                                       
+```
+
+
+
+```{r}
+# ACF & PACF of residuals - first lag removed
+
+par(mfcol = c(2, 1))
+
+acf(PS.Level.m2$residuals, 25, xlim = c(1, 25), ylim = c(-0.2, 0.4))
+
+pacf(PS.Level.m2$residuals, 25, ylim = c(-0.2, 0.4))
+
+par(mfcol = c(1, 1))
+
+
+```
+
+
+```{r}
+# Removing coefficients: t-ratio
+
+# Test the t-ratio of each, remove if abs(x) < 1.96
+
+# Compute the standard error (se)
+
+PS.Level.m2.se <- sqrt(diag(vcov(PS.Level.m2)))
+PS.Level.m2.se
+
+```
+
+
+```{r}
+
+
+# Now calculate the t-ratio
+
+# Use 1.96 as cutoff - 5% significance level
+
+PS.Level.m2.tratio <- abs(PS.Level.m2$coef / PS.Level.m2.se)
+
+PS.Level.m2.tratio
+
+```
+
+#### 1 (d)
+
+```{r}
+# Fix least significant parameter to zero (lowest t-ratio)
+
+fixed <- c(NA, NA, NA, 0, NA, NA, NA)
+
+PS.Level.m3 <- arima(PS.Level, order = c(5, 0, 0), xreg = i303, fixed = fixed)
+
+PS.Level.m3
+
+
+
+```
+
+
+```{r}
+# Summary stats
+
+summary(PS.Level.m3)
+
+tsdiag(PS.Level.m3, gof = 25)
+
+```
+
+
+```{r}
+
+# Pormanteau test or Ljung-Box test & plot
+
+# Set fitdf = p + q from arima(order = (p, d, q))
+
+# Monthly series so test lags at 12 and 24
+
+Box.test(residuals(PS.Level.m3), lag = 12, fitdf = 5, type = "Ljung")
+
+Box.test(residuals(PS.Level.m3), lag = 24, fitdf = 5, type = "Ljung")
+
+# Plot; start at value of fitdf()
+
+plot(sapply(5:100, function(i) Box.test(residuals(PS.Level.m3), lag = i,  fitdf = 5)$p.value), type = "l")
+
+```
+
+
+```{r}
+
+# ACF & PACF of residuals - first lag removed
+
+par(mfcol = c(2, 1))
+
+acf(PS.Level.m3$residuals, 25, xlim = c(1, 25), ylim = c(-0.2, 0.4))
+
+pacf(PS.Level.m3$residuals, 25, ylim = c(-0.2, 0.4))
+
+par(mfcol = c(1, 1))
+
+
+```
+
+
+```{r}
+
+# Removing coefficients: t-ratio
+
+# Test the t-ratio of each, remove if abs(x) < 1.96
+
+# Compute the standard error (se)
+
+PS.Level.m3.se <- sqrt(diag(vcov(PS.Level.m3)))
+
+PS.Level.m3.se
+
+```
+
+
+```{r}
+
+
+# Now calculate the t-ratio
+
+# Use 1.96 as cutoff - 5% significance level
+
+PS.Level.m3.tratio <- abs(PS.Level.m3$coef / PS.Level.m3.se)
+
+PS.Level.m3.tratio
+
+```
+
+
+
+### Microsoft earnings
+
+```{r}
+
+msft <- read.table("q-earn-msft.txt",header=T)
+
+# str(msft)
+# View(msft)
+# write.csv(msft, file = "msft.csv")
+
+```
+
+
+
+Data Summaries and Tables
+
+```{r}
+
+library("fBasics")
+basicStats_msft <- basicStats(msft)
+
+library("knitr","xtable")
+
+kable(basicStats_msft[c('Mean', 'Stdev', 'Skewness', 'Kurtosis', 'Minimum', 'Maximum'),-2],
+format="pandoc", caption="Basic Statistics of Microsoft earnings")
+
+```
+
+
+
+```{r}
+
+
+ME <-msft$value 
+par(mfrow = c(1,2))
+hist(ME, col = "blue", main = "Histogram of Microsoft Earnings", xlab = "value")
+boxplot(ME, col = "blue", main = "Boxplot of Microsoft Earnings", ylab = "value")
+
+
+
+```
+
+```{r}
+
+par(mfrow = c(1,1))
+
+qqnorm(ME, col = "blue", pch = 16, main = "QQ Plot of Microsoft Earnings")
+qqline(ME, col = "green", lty = 2, lwd = 2)
+
+
+
+```
+
+```{r}
+require(moments)
+skewness(ME)
+kurtosis(ME)
+
+# 95%  value
+qnorm(0.025, mean = mean(ME), sd = sd(ME), lower.tail = FALSE)
+qnorm(0.025, mean = mean(ME), sd = sd(ME), lower.tail = TRUE)
+```
+
+
+
+#### 2 (b)
+
+
+Plot the  QUARTERLY Microsoft Earnings:
+
+
+We know that the datas are recoreded at  QUARTERLY intervals so we will perform an STL decomposition to investigate our suspicion that this data has a seasonal component.
+
+
+```{r}
+
+# Create log returns
+
+ME.log <- log(ME)
+
+# Convert to time series
+
+ts.ME.log <- ts(ME.log, start = c(1986,2), frequency = 4)
+
+
+# Plot the time series
+
+plot(ts.ME.log, xlab = "Year", ylab = "Log Value", 
+
+     main = "Microsoft Quarterly Earnings: 1986-Q2 to 2013-Q3")
+
+```
+
+
+```{r}
+library(ggplot2)
+
+ggplot(msft, aes(x=factor(qr), y=value)) +
+  geom_boxplot(fill="cornflowerblue", color="black", notch= TRUE)+
+  geom_point(position="jitter", color="blue", alpha=.5)+
+  labs(title= " Boxplots of VALUE differentiated by Quarter", x="Quarter", y="VALUE") +
+  theme( 
+    title = element_text(size = 12, color = "black", face = "bold"),
+    axis.text = element_text(colour = "black", size = 12, face = "italic"),
+    axis.text.y = element_text(colour = "black",size = 12),
+    axis.title = element_text(size = 15, color = "black", face = "bold"),
+    axis.title.y = element_text(size = 15, color = "black", face = "bold")
+  )
+```
+
+
+```{r}
+
+par(mfcol = c(1, 1))
+
+tsdisplay(ME.log, main = "ME.log")
+
+```
+
+
+
+It's now obvious from the ACF that we're seeing a non-stationary process because the ACF is decreasing slowly. This leads us to want to examine the first order difference of the time series.
+
+```{r}
+# Determine if differencing is required
+
+ndiffs(ME.log, test = "adf")
+
+adf.test(ME.log, alternative = "stationary")
+
+adf.test(diff(ME.log), alternative = "stationary")
+
+```
+
+```{r}
+
+# First differenced series
+
+ME.log.diff <- diff(ME.log)
+
+# Build a time series model for the data; write down the fitted model
+
+# Use include.mean = F because the model uses a differenced series
+
+ME.log.diff.m1 <- arima(ME.log.diff, order = c(1, 0, 1), include.mean = F)
+
+ME.log.diff.m1
+
+```
+
+```{r }
+
+# Summary stats
+
+summary(ME.log.diff.m1)
+
+tsdiag(ME.log.diff.m1, gof = 25)
+
+```
+
+```{r}
+
+# Pormanteau test or Ljung-Box test & plot
+
+# Set fitdf = p + q from arima(order = (p, d, q))
+
+# Quarterly series so test lags at 4 and 8
+
+Box.test(residuals(ME.log.diff.m1), lag = 4, fitdf = 2, type = "Ljung")
+
+Box.test(residuals(ME.log.diff.m1), lag = 8, fitdf = 2, type = "Ljung")
+
+
+
+```
+```{r}
+# Plot; start at value of fitdf()
+
+plot(sapply(2:100, function(i) Box.test(residuals(ME.log.diff.m1), lag = i, 
+
+                                        fitdf = 2)$p.value), type = "l")
+```
+
+
+
+```{r}
+# Removing coefficients: t-ratio
+
+# Test the t-ratio of each, remove if abs(x) < 1.96
+
+
+
+# Compute the standard error (se)
+
+ME.log.diff.m1.se <- sqrt(diag(vcov(ME.log.diff.m1)))
+
+
+ME.log.diff.m1.se
+
+# Now calculate the t-ratio
+
+# Use 1.96 as cutoff - 5% significance level
+
+ME.log.diff.m1.tratio <- abs(ME.log.diff.m1$coef / ME.log.diff.m1.se)
+
+ME.log.diff.m1.tratio
+
+
+
+# Notes: Reject null hypothesis of model adequacy
+
+# tsdiag(), Box.test, ACF, PACF of residuals all suggest this
+
+# p-values < alpha
+
+
+```
+
+#### 2 (c)
+
+```{r}
+
+# Fit the model to the series; write down the fitted model
+
+m5 <- arima(ME.log, order = c(0, 1, 1), 
+
+                   seasonal = list(order = c(0, 0, 1), period = 4))
+m5
+```
+
+```{r}
+
+# Summary stats
+
+summary(m5)
+
+tsdiag(m5, gof = 25)
+
+```
+
+
+
+
+```{r}
+
+
+
+# Pormanteau test or Ljung-Box test & plot
+
+# Set fitdf = p + q from arima(order = (p, d, q))
+
+# Quarterly series so test lags at 4 and 8
+
+Box.test(residuals(m5), lag = 4, fitdf = 2, type = "Ljung")
+
+Box.test(residuals(m5), lag = 8, fitdf = 2, type = "Ljung")
+
+# Plot; start at value of fitdf()
+
+plot(sapply(2:100, function(i) Box.test(residuals(m5), lag = i, 
+
+                                        fitdf = 2)$p.value), type = "l")
+```
+```{r}
+
+# ACF & PACF of residuals - first lag removed
+
+par(mfcol = c(1, 1))
+
+acf(m5$residuals, 25, xlim = c(1, 25), ylim = c(-0.2, 0.4))
+
+pacf(m5$residuals, 25, ylim = c(-0.2, 0.4))
+
+
+```
+
+```{r}
+# Removing coefficients: t-ratio
+
+# Test the t-ratio of each, remove if abs(x) < 1.96
+
+
+
+# Compute the standard error (se)
+
+m5.se <- sqrt(diag(vcov(m5))) 
+m5.se
+
+
+
+# Now calculate the t-ratio
+
+# Use 1.96 as cutoff - 5% significance level
+
+m5.tratio <- abs(m5$coef / m5.se)
+
+m5.tratio
+```
+
+Model m5 has a lower AIC.
+
+#### 2 (d)
+
+```{r}
+"backtest" <- function(m1,rt,orig,h,xre=NULL,fixed=NULL,inc.mean=TRUE){
+# m1: is a time-series model object
+# orig: is the starting forecast origin
+# rt: the time series
+# xre: the independent variables
+# h: forecast horizon
+# fixed: parameter constraint
+# inc.mean: flag for constant term of the model.
+#
+regor=c(m1$arma[1],m1$arma[6],m1$arma[2])
+seaor=list(order=c(m1$arma[3],m1$arma[7],m1$arma[4]),period=m1$arma[5])
+T=length(rt)
+if(orig > T)orig=T
+if(h < 1) h=1
+rmse=rep(0,h)
+mabso=rep(0,h)
+nori=T-orig
+err=matrix(0,nori,h)
+jlast=T-1
+for (n in orig:jlast){
+ jcnt=n-orig+1
+ x=rt[1:n]
+ if (is.null(xre))
+  pretor=NULL else pretor=xre[1:n]
+ mm=arima(x,order=regor,seasonal=seaor,xreg=pretor,fixed=fixed,include.mean=inc.mean)
+ if (is.null(xre))
+ nx=NULL else nx=xre[(n+1):(n+h)]
+ fore=predict(mm,h,newxreg=nx)
+ kk=min(T,(n+h))
+# nof is the effective number of forecats at the forecast origin n.
+ nof=kk-n
+ pred=fore$pred[1:nof]
+ obsd=rt[(n+1):kk]
+ err[jcnt,1:nof]=obsd-pred
+}
+#
+for (i in 1:h){
+iend=nori-i+1
+tmp=err[1:iend,i]
+mabso[i]=sum(abs(tmp))/iend
+rmse[i]=sqrt(sum(tmp^2)/iend)
+}
+print("RMSE of out-of-sample forecasts")
+print(rmse)
+print("Mean absolute error of out-of-sample forecasts")
+print(mabso)
+backtest <- list(origin=orig,error=err,rmse=rmse,mabso=mabso)
+}
+
+# Use backtest to compare models; determine preference based on fit
+
+
+backtest(ME.log.diff.m1, ME.log.diff, 81, 1)
+
+
+
+# Q3B
+
+backtest(m5, ME.log, 81, 1)
+
+
+
+```
+
+Model m5 is preferred because it has a lower RMSE. This model doesn't have any seasonal differencing.
+
+### Fama-Bliss bond yields 
+
+```{r}
+
+FBY <- read.table("m-FamaBlissdbndyields.txt", header=T)
+
+```
+
+#### Q3:EDA
+
+
+Data Summaries and Tables
+
+```{r}
+
+library("fBasics")
+basicStats_FBY <- basicStats(FBY)
+
+library("knitr","xtable")
+
+kable(basicStats_FBY[c('Mean', 'Stdev', 'Skewness', 'Kurtosis', 'Minimum', 'Maximum'), -1],
+      format="pandoc", caption="Basic Statistics of the Fama-Bliss bond yields")
+
+```
+
+
+
+```{r, echo=FALSE, warning =FALSE, error=FALSE,message=FALSE}
+
+#############################################################
+## yield1 Histogram
+
+
+par(mfcol=c(2,2))
+
+x1<-FBY$yield1
+
+h1<-hist(FBY$yield1, breaks=20, main=" yield1 Histogram", xlab="yield1")
+# axis(side=1, at=seq(0,82,1), pos=0, las=0)
+
+abline(v = mean(x1 , na.rm = TRUE), col = "red", lwd = 2, lty = 2)
+abline(v = median(x1, na.rm = TRUE), col = "green", lwd = 2, lty = 2)
+
+xfit1<-seq(min(x1, na.rm = TRUE),max(x1, na.rm = TRUE), length=40)
+yfit1<-dnorm(xfit1, mean = mean(x1, na.rm = TRUE), sd=sd(x1, na.rm = TRUE))
+yfit1<-yfit1*diff(h1$mids[1:2]*length(x1))
+lines(xfit1, yfit1, col="blue",lwd=2)
+
+
+#############################################################
+## yield3 Histogram
+
+x2<-FBY$yield3
+
+h2<-hist(FBY$yield3, breaks=20, main=" yield3 Histogram", xlab="yield3")
+# axis(side=1, at=seq(0,82,1), pos=0, las=0)
+
+abline(v = mean(x2 , na.rm = TRUE), col = "red", lwd = 2, lty = 2)
+abline(v = median(x2, na.rm = TRUE), col = "green", lwd = 2, lty = 2)
+
+xfit2<-seq(min(x2, na.rm = TRUE),max(x2, na.rm = TRUE), length=40)
+yfit2<-dnorm(xfit2, mean = mean(x2, na.rm = TRUE), sd=sd(x2, na.rm = TRUE))
+yfit2<-yfit2*diff(h2$mids[1:2]*length(x2))
+lines(xfit2, yfit2, col="blue",lwd=2)
+
+
+
+
+qqnorm(FBY$yield1); qqline(FBY$yield1)
+qqnorm(FBY$yield3); qqline(FBY$yield3)
+
+
+par(mfcol=c(1,1))
+
+```
+
+
+
+Scatter Plots and Pairwise Correlation
+
+```{r}
+
+# What are the pairwise associations between the variables? 
+plot(FBY$yield1,FBY$yield3,  xlab="yield1", ylab="yield3")
+
+
+```
+
+
+```{r}
+cor(FBY$yield1,FBY$yield3)
+
+```
+
+```{r}
+
+yield1.ts = ts(FBY$yield1, start = c(1961), frequency = 12)
+
+autoplot(yield1.ts, main = "Fama-Bliss Bond Yeilds, 1 Year Maturity", ylab = "Bond Yields", xlab = "Years")
+
+
+```
+
+
+```{r}
+
+yield3.ts = ts(FBY$yield3, start = c(1961), frequency = 12)
+
+autoplot(yield3.ts, main = "Fama-Bliss Bond Yeilds, 3 Year Maturity", ylab = "Bond Yields", xlab = "Years")
+
+
+```
+
+
+#### 3(b)
+
+Fit the linear regression model y3t = ??0 + ??1y1t + et using the model-building process. Write the equation of the model to be ???tted.
+```{r}
+
+yield1 <- FBY$yield1
+
+yield3 <- FBY$yield3
+
+bond.m1 <- lm(yield3 ~ yield1)
+
+summary(bond.m1)
+
+```
+
+# ACF & PACF of residuals - first lag removed
+
+```{r}
+
+bond.m1_acf = acf(bond.m1$residuals, plot = FALSE)
+autoplot(bond.m1_acf, main = "ACF of  linear regression model  Residuals")
+
+```
+```{r}
+
+bond.m1_pacf = pacf(bond.m1$residuals, plot = FALSE)
+autoplot(bond.m1_pacf, main = "ACF of  linear regression model  Residuals")
+
+```
+There appears to be a number of significant lags, the model does not appear to be adequate (exhibits serial autocorrelation)
+
+
+### 3(c) 
+
+Repeat by letting d1t = (1 ??? B)y1t and d2t = (1 ??? B)y3t, where B is the back-shift operator. Here dit, i = 1,2,3 denotes the change in monthly bond yields. Consider the linear regression d3t = ??d1t +et. Write the equation of the model to be ???tted. Re???ne as needed to achieve an adequate model. 
+
+```{r}
+
+
+
+# Fit a linear regression model as in Q4A, but using first differenced series
+
+y1.diff <- diff(yield1)
+
+y3.diff <- diff(yield3)
+
+
+# Use of -1 excludes the constant
+
+bond.m2 <- lm(y3.diff ~ (-1 + y1.diff))
+summary(bond.m2)
+
+```
+
+```{r}
+
+bond.m2_acf <- acf(bond.m2$residuals, plot = FALSE)
+autoplot(bond.m2_acf, main = "ACF of bond.m2 Residuals")
+bond.m2_pacf <- pacf(bond.m2$residuals, plot = FALSE)
+autoplot(bond.m2_pacf, main = "PACF of bond.m2 Residuals")
+
+```
+Although the $R^2$ value is less in bond.m2, taking the difference of the time series is justified as it reduces the serial autocorrelation and produces a more accurate model.
+
+
+The model is not accurate due to significant lags at 1 and 5 (seen in the PACF).
+
+
+
+
+```{r}
+
+
+# Determine order of model
+
+bond.m3 <- ar(bond.m2$residuals, method = "mle")
+
+bond.m3$order
+
+```
+
+```{r}
+# Fit the model to the series; write down the fitted model
+
+bond.m4 <- arima(y3.diff, order = c(5, 0, 0), xreg = y1.diff, include.mean = F)
+
+bond.m4
+```
+
+```{r}
+
+# Summary stats
+
+summary(bond.m4)
+
+tsdiag(bond.m4, gof = 25)
+```
+```{r}
+
+# Pormanteau test or Ljung-Box test & plot
+
+# Set fitdf = p + q from arima(order = (p, d, q))
+
+# Monthly series so test lags at 12 and 24
+
+Box.test(residuals(bond.m4), lag = 12, fitdf = 5, type = "Ljung")
+
+Box.test(residuals(bond.m4), lag = 24, fitdf = 5, type = "Ljung")
+
+```
+
+```{r}
+
+# Plot; start at value of fitdf()
+
+plot(sapply(5:100, function(i) Box.test(residuals(bond.m4), lag = i, 
+
+                                        fitdf = 5)$p.value), type = "l", ylab=" Box.test Residual p value")
+
+```
+
+
+```{r}
+
+# ACF & PACF of residuals - first lag removed
+
+bond.m4_acf <- acf(bond.m4$residuals, plot = FALSE)
+autoplot(bond.m4_acf, main = "ACF of bond.m4 Residuals")
+bond.m4_pacf <- pacf(bond.m4$residuals, plot = FALSE)
+autoplot(bond.m4_pacf, main = "PACF of bond.m4 Residuals")
+
+```
+
+
+```{r}
+
+# Removing coefficients: t-ratio
+
+# Test the t-ratio of each, remove if abs(x) < 1.96
+
+
+
+# Compute the standard error (se)
+
+bond.m4.se <- sqrt(diag(vcov(bond.m4))); bond.m4.se
+```
+
+```{r}
+
+
+
+# Now calculate the t-ratio
+
+# Use 1.96 as cutoff - 5% significance level
+
+bond.m4.tratio <- abs(bond.m4$coef / bond.m4.se)
+
+bond.m4.tratio
+
+```
+
+
+
+
+```{r}
+fixed <- c(NA, NA, 0, NA, NA, NA)
+
+bond.m5 <- arima(y3.diff, order = c(5, 0, 0), xreg = y1.diff, include.mean = F,
+
+                 fixed = fixed)
+
+bond.m5
+
+```
+
+```{r}
+
+
+
+# Summary stats
+
+summary(bond.m5)
+
+tsdiag(bond.m5, gof = 25)
+
+```
+
+
+```{r}
+
+
+# Pormanteau test or Ljung-Box test & plot
+
+# Set fitdf = p + q from arima(order = (p, d, q))
+
+# Monthly series so test lags at 12 and 24
+
+Box.test(residuals(bond.m5), lag = 12, fitdf = 5, type = "Ljung")
+
+Box.test(residuals(bond.m5), lag = 24, fitdf = 5, type = "Ljung")
+
+```
+
+
+```{r}
+
+# Plot; start at value of fitdf()
+
+plot(sapply(5:100, function(i) Box.test(residuals(bond.m5), lag = i, 
+
+                                        fitdf = 5)$p.value), type = "l" , ylab=" Box.test Residual p value")
+```
+
+
+```{r}
+
+# ACF & PACF of residuals - first lag removed
+
+bond.m5_acf <- acf(bond.m5$residuals, plot = FALSE)
+autoplot(bond.m5_acf, main = "ACF of bond.m5 Residuals")
+bond.m5_pacf <- pacf(bond.m5$residuals, plot = FALSE)
+autoplot(bond.m5_pacf, main = "PACF of bond.m5 Residuals")
+
+```
+
+```{r}
+# Removing coefficients: t-ratio
+
+# Test the t-ratio of each, remove if abs(x) < 1.96
+
+
+
+# Compute the standard error (se)
+
+bond.m5.se <- sqrt(diag(vcov(bond.m5)))
+bond.m5.se
+
+
+```
+```{r}
+
+# Now calculate the t-ratio
+
+# Use 1.96 as cutoff - 5% significance level
+
+bond.m5.tratio <- abs(bond.m5$coef / bond.m5.se)
+
+bond.m5.tratio
+```
+
+
+### 4(a) 
+Fit an AR(6) model to y3t using y1t as an explanatory variable using the model-building process. Write the equation of the model to be ???tted. 
+
+```{r}
+bond.m6 <- arima(yield3, order = c(6, 0, 0), xreg = yield1)
+
+bond.m6
+```
+
+```{r}
+
+# Summary stats
+
+summary(bond.m6)
+
+tsdiag(bond.m6, gof = 25)
+
+
+```
+
+
+```{r}
+
+
+# Pormanteau test or Ljung-Box test & plot
+
+# Set fitdf = p + q from arima(order = (p, d, q))
+
+# Monthly series so test lags at 12 and 24
+
+Box.test(residuals(bond.m6), lag = 12, fitdf = 6, type = "Ljung")
+
+Box.test(residuals(bond.m6), lag = 24, fitdf = 6, type = "Ljung")
+```
+
+```{r}
+# Plot; start at value of fitdf()
+
+plot(sapply(6:100, function(i) Box.test(residuals(bond.m6), lag = i, 
+
+                                        fitdf = 6)$p.value), type = "l"  , ylab=" Box.test Residual p value")
+```
+
+
+
+
+```{r}
+
+# ACF & PACF of residuals - first lag removed
+
+bond.m6_acf <- acf(bond.m6$residuals, plot = FALSE)
+autoplot(bond.m6_acf, main = "ACF of bond.m6 Residuals")
+bond.m6_pacf <- pacf(bond.m6$residuals, plot = FALSE)
+autoplot(bond.m6_pacf, main = "PACF of bond.m6 Residuals")
+
+```
+
+
+```{r}
+# Removing coefficients: t-ratio
+
+# Test the t-ratio of each, remove if abs(x) < 1.96
+
+# Compute the standard error (se)
+
+bond.m6.se <- sqrt(diag(vcov(bond.m6)))
+bond.m6.se
+
+# Now calculate the t-ratio
+
+# Use 1.96 as cutoff - 5% significance level
+
+bond.m6.tratio <- abs(bond.m6$coef / bond.m6.se)
+
+bond.m6.tratio
+
+
+```
+
+
+### 4(b) 
+Re???ne the model in 4a by setting the insigni???cant coe???cients of lags 2 and 5 to zero. Write the equation of the ???tted model. Compare this model with that in 4a. 
+```{r}
+
+
+# Set insignificant coefficients to zero; write down the fitted model
+
+fixed <- c(NA, 0, NA, NA, 0, NA, NA, NA)
+
+bond.m7 <- arima(yield3, order = c(6, 0, 0), xreg = yield1, fixed = fixed)
+
+bond.m7
+```
+
+
+```{r}
+# Summary stats
+
+summary(bond.m7)
+
+tsdiag(bond.m7, gof = 25)
+```
+
+
+```{r}
+
+# Pormanteau test or Ljung-Box test & plot
+
+# Set fitdf = p + q from arima(order = (p, d, q))
+
+# Monthly series so test lags at 12 and 24
+
+Box.test(residuals(bond.m7), lag = 12, fitdf = 6, type = "Ljung")
+
+Box.test(residuals(bond.m7), lag = 24, fitdf = 6, type = "Ljung")
+
+```
+
+
+```{r}
+# Plot; start at value of fitdf()
+
+plot(sapply(6:100, function(i) Box.test(residuals(bond.m7), lag = i, 
+
+                                        fitdf = 6)$p.value), type = "l" , ylab=" Box.test Residual p value")
+
+
+```
+
+
+
+```{r}
+
+# ACF & PACF of residuals - first lag removed
+
+bond.m7_acf <- acf(bond.m7$residuals, plot = FALSE)
+autoplot(bond.m7_acf, main = "ACF of bond.m7 Residuals")
+bond.m7_pacf <- pacf(bond.m7$residuals, plot = FALSE)
+autoplot(bond.m7_pacf, main = "PACF of bond.m6 Residuals")
+
+```
+
+
+```{r}
+
+# Removing coefficients: t-ratio
+
+# Test the t-ratio of each, remove if abs(x) < 1.96
+
+
+# Compute the standard error (se)
+
+bond.m7.se <- sqrt(diag(vcov(bond.m7))); bond.m7.se
+
+
+```
+
+
+```{r}
+# Now calculate the t-ratio
+
+# Use 1.96 as cutoff - 5% significance level
+
+bond.m7.tratio <- abs(bond.m7$coef / bond.m7.se)
+
+bond.m7.tratio
+
+
+```
+
+
+### 4(c) 
+Use the command polyroot in R to ???nd the solutions of the characteristic equation of the re???ned AR(6) model. How many real solutions are there?
+
+```{r}
+# Does the model imply the existence of business cycles in consumer sentiment?
+
+# Need to view the polynomial root (pages 56-58 of Intro TS)
+
+# If results contain complex roots, suggest the existence of business cycles
+
+
+
+# Set up the polynomial
+
+# Only use first six coefficients; last two are intercept + additional variable
+
+bond.m7.poly <- c(1, -bond.m7$coef[1:6])
+
+
+```
+
+
+```{r}
+# Solve the equation
+
+bond.m7.root <- polyroot(bond.m7.poly); 
+bond.m7.root
+print(bond.m7.root)
+
+
+```
+
+
+### 4(d) 
+Compute the inverse of the absolute values of the solutions of the characteristic equation. Write the maximum value of the inverses. The maximum should be close to 1, implying that the AR(6) model likely contains a unit root.
+
+```{r}
+
+# Obtain absolute value (modulus)
+
+Mod(bond.m7.root)
+
+1/Mod(bond.m7.root)
+
+```
+

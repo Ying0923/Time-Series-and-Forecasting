@@ -1,0 +1,473 @@
+
+
+---
+title: "Predict431-TS4-CODE"
+
+output: word_document
+    
+---
+<style>
+body {
+    position: absolute;
+    left: 10px;}
+</style>
+
+<style type="text/css">
+
+.main-container {
+  max-width: 1280px;
+}
+
+</style>
+
+
+```{r setup, include=FALSE}
+
+knitr::opts_chunk$set(echo = FALSE, warning =FALSE, error=FALSE,message=FALSE)
+
+
+```
+
+```{r}
+
+setwd("C:/Users/Admin/Dropbox/Northwestern University/Predict413/Assignment 4/")
+
+
+da <- read.table("m-umcsent.txt",header=T)
+head(da)
+
+```
+
+
+```{r}
+require(fBasics)    # for calculations 
+require(fpp)        # for data 
+require(knitr)      # for table output
+require(ggplot2)    # for graphing
+require(ggfortify)  # for graphing time series
+require(ggthemes)   # for graphing beautifully
+require(gridExtra)  # for laying out graphs
+require(fUnitRoots)
+
+```
+
+
+
+```{r}
+
+csent=da$VALUE
+tdx=da[,1]+da[,2]/12
+plot(tdx,csent,xlab='year',ylab='sentiment',type='l',main="UM Consumer Sentiment")
+
+
+```
+
+
+
+
+```{r, fig.width=8,fig.height=5}
+
+
+library ("forecast")
+
+a <- csent
+a.ts <- ts(a, frequency = 12)  # number of observations per period. 12 observations per year
+decomp_csent_stl = stl(a.ts, s.window="periodic") # calculate seasonal component of the data
+deseasonal_csent <- seasadj(decomp_csent_stl) # decomposing the series and removing the seasonality
+plot(decomp_csent_stl)
+
+```
+
+
+(b) Are there unit roots and if yes, why?
+
+We will use the Augumented Dickey-Fuller Test, which computes the Augmented Dickey-Fuller test for the null that the time series has a unit root:
+
+```{r}
+
+library("tseries")
+
+adf.test(csent, alternative = "stationary")
+
+```
+
+
+
+
+
+
+
+
+
+
+```{r}
+tsdisplay(csent, main = "UM Consumer Sentiment")
+```
+
+It's now obvious from the ACF that we're seeing a non-stationary process because the ACF is decreasing slowly. This leads us to want to examine the first order difference of the time series.
+
+
+
+```{r}
+dt1 = diff(csent)
+tsdisplay(dt1, main = "First Order Difference of UM Consumer Sentiment")
+```
+
+
+
+
+2. Duration analysis (1 point) 
+
+
+```{r}
+
+unemp=read.table("m-unempmean.txt",header=T)
+
+t1 = ts(unemp$Value, start = 1948, frequency = 12)
+
+
+plot(t1, xlab = "Year", ylab = "dur",
+     main = "Mean Duration of Unemployment")
+
+unemp_stl = stl(t1, s.window="periodic")
+plot(unemp_stl)
+
+adf.test(t1)
+
+tsdisplay(t1, main = "Mean Duration of Unemployment")
+
+```
+
+
+
+(a) For the ???rst-di???erenced data, rt, test H0 : µ = 0 versus the alternative Ha : µ 6= 0. What does this mean?
+
+```{r}
+
+dt1 = diff(t1)
+tsdisplay(dt1, main = "First Order Difference of Mean Duration of Unemployment")
+
+```
+```{r}
+# Test the hypothesis that expected change (first differenced) of UNEMP is zero
+# versus alternative that it's non-zero.
+t.test(dt1)
+
+```
+
+
+
+
+
+
+
+(b) Build an AR model for rt series. Perform model checking using gof = 24. Is the model adequate? Why? 
+
+```{r}
+m1 = ar(dt1, method = "mle")
+print(m1)
+```
+
+
+
+
+
+
+
+We'll now use the arima method to create an AR(12,0,0) model.
+
+```{r}
+
+m2 = arima(dt1, order = c(12, 0, 0), include.mean = FALSE)
+print(m2)
+
+```
+
+
+```{r  fig.width=10,fig.height=10}
+
+tsdiag(m2, gof.lag = 24)
+
+```
+
+
+An ACF plot of the residuals show all correlations within the threshold limits indicating that the residuals are behaving like white noise.
+
+We will perform a Box-Pierce and Ljung-Box Test to compute a Ljung test statistic for examining the null hypothesis of independence given a time series. This is also known as a portmanteau test.
+
+```{r}
+Box.test(m2$residuals, lag = 24, type = "Ljung")
+```
+
+This is testing to see if the residuals of the model look like white noise. The Ljung-Box test of the model residuals reveals a p-value that is not significant, we surmise that the model is adequate.
+
+
+
+
+
+
+
+(d) Fit a seasonal model for the rt series using the command ms <- arima(rt, order=c(2,0,1), seasonal=list(order=c(1,0,1), period=12), include.mean=F
+Perform model checking using gof = 24. Is the seasonal model adequate? Why
+
+
+```{r}
+m3 = arima(dt1, order = c(2, 0, 1), seasonal = list(order = c(1,0,1), period = 12), include.mean = FALSE)
+print(m3)
+```
+
+
+```{r  fig.width=10,fig.height=10}
+
+tsdiag(m3, gof.lag = 24)
+
+```
+
+
+An ACF plot of the residuals show all correlations within the threshold limits indicating that the residuals are behaving like white noise.
+
+We will perform a Box-Pierce and Ljung-Box Test to compute a Ljung test statistic for examining the null hypothesis of independence given a time series. This is also known as a portmanteau test.
+
+```{r}
+Box.test(m3$residuals, lag = 24, type = "Ljung")
+```
+
+This is testing to see if the residuals of the model look like white noise. The Ljung-Box test of the model residuals reveals a p-value that is not significant, we surmise that the model is adequate.
+
+Part F
+
+Based on the in-sample fitting, which model is preferred? Why?
+
+```{r}
+accuracy(m2)
+accuracy(m3)
+
+```
+
+```{r}
+
+qqnorm(m2$residuals, main= "AR(12,0,0) - Residuals QQ Plot")
+qqline(m2$residuals)
+
+Box.test(m2$residuals, type ="Ljung-Box")
+
+
+```
+
+
+```{r}
+
+qqnorm(m3$residuals, main= " seasonal model  - Residuals QQ Plot")
+qqline(m3$residuals)
+
+Box.test(m3$residuals, type ="Ljung-Box")
+
+
+```
+
+```{r}
+
+m2$aic
+m3$aic
+
+
+
+```
+
+
+
+
+Consider out-of-sample predictions. Use t = 750 as the starting forecast origin. Which model is preferred based on the out-of-sample predictions?
+
+```{r}
+
+"backtest" <- function(m1,rt,orig,h,xre=NULL,fixed=NULL,inc.mean=TRUE){
+# m1: is a time-series model object
+# orig: is the starting forecast origin
+# rt: the time series
+# xre: the independent variables
+# h: forecast horizon
+# fixed: parameter constriant
+# inc.mean: flag for constant term of the model.
+#
+regor=c(m1$arma[1],m1$arma[6],m1$arma[2])
+seaor=list(order=c(m1$arma[3],m1$arma[7],m1$arma[4]),period=m1$arma[5])
+T=length(rt)
+if(orig > T)orig=T
+if(h < 1) h=1
+rmse=rep(0,h)
+mabso=rep(0,h)
+nori=T-orig
+err=matrix(0,nori,h)
+jlast=T-1
+for (n in orig:jlast){
+ jcnt=n-orig+1
+ x=rt[1:n]
+ if (is.null(xre))
+  pretor=NULL else pretor=xre[1:n]
+ mm=arima(x,order=regor,seasonal=seaor,xreg=pretor,fixed=fixed,include.mean=inc.mean)
+ if (is.null(xre))
+ nx=NULL else nx=xre[(n+1):(n+h)]
+ fore=predict(mm,h,newxreg=nx)
+ kk=min(T,(n+h))
+# nof is the effective number of forecats at the forecast origin n.
+ nof=kk-n
+ pred=fore$pred[1:nof]
+ obsd=rt[(n+1):kk]
+ err[jcnt,1:nof]=obsd-pred
+}
+#
+for (i in 1:h){
+iend=nori-i+1
+tmp=err[1:iend,i]
+mabso[i]=sum(abs(tmp))/iend
+rmse[i]=sqrt(sum(tmp^2)/iend)
+}
+print("RMSE of out-of-sample forecasts")
+print(rmse)
+print("Mean absolute error of out-of-sample forecasts")
+print(mabso)
+backtest <- list(origin=orig,error=err,rmse=rmse,mabso=mabso)
+}
+
+backtest(m2, dt1, 750, 1, inc.mean = FALSE)
+backtest(m3, dt1, 750, 1, inc.mean = FALSE)
+```
+
+
+It appears that in in-sample fitting the first model (AR(12)) has a higher RMSE.
+
+Part 2
+
+Consider the weekly crude oil prices: West Texas Intermediat (WTI), Crushing, Oklahoma. The data are available from FRED of the Federal Reserve Bank of St. Louis, and also in w-coilwtico.txt. The sample period is from January 3, 1986 to April 2, 2014.
+
+```{r}
+
+oil = read.table("w-coilwtico.txt",header=T)
+head(oil)
+
+```
+
+We'll visually examine the daa set to form initial impressions.
+
+```{r}
+
+
+# Convert to time series
+t3 <- ts(oil$Value, start = 1986, frequency = 52)
+
+# Plot the time series
+plot(t3, xlab = "Year", ylab =  "Value",
+     main = "Weekly Crue Oil Prices")
+
+
+```
+
+
+We can see a slightly increasing trend that has indication of seasonality and cyclic characteristics. We also notice the large increase between 2009 and 2014.
+
+We will perform an STL decomposition to investigate our suspicion that this data has a seasonal component.
+
+```{r}
+oil_stl = stl(t3, s.window="periodic")
+plot(oil_stl)
+```
+
+
+We see a seasonal component. We also notice an interesting remainder in the time of high volatility.
+
+Part A
+
+Let $r_t$ be the growth series (e.g. the first difference of log oil proces). Is there a serial correlation in the $r_t$ series?
+
+
+```{r}
+
+
+
+plot(diff(t3),type='l',  ylab =  "diff(Crue Oil Prices)",
+     main = "The ???rst di???erence of  oil prices")
+
+plot(diff(log(t3)),type='l',  ylab =  "diff(log(Crue Oil Prices))",
+     main = "The ???rst di???erence of log oil prices")
+
+
+
+```
+
+```{r}
+rtn=diff(log(t3))
+
+t.test(rtn)
+```
+
+
+
+```{r}
+Box.test(rtn,lag=10,type='Ljung')
+```
+
+
+
+We will perform a Box-Pierce and Ljung-Box Test to compute a Ljung test statistic for examining the null hypothesis of independence given a time series. This is also known as a portmanteau test.
+
+```{r}
+Box.test(rtn, type = "Ljung")
+```
+
+From the p-value of 0.0001753 we must reject $H_0$. This is an indicator that there are some significant serial correlations at the 5% level for the first order difference series.
+
+
+Part B
+
+Build an AR model for $r_t$. Check the adequacy of the model, and write down the model.
+
+
+```{r}
+m4 = ar(rtn, type="mle")
+m5 = arima(rtn, order=c(16, 0, 0))
+print(m5)
+```
+
+
+\begin{multline} $$y_t = 0.1067y_{t-1}-0.0485y_{t-2}+0.1098y_{t-3}+0.0353y_{t-4} \-0.0227y_{t-5}-0.0228_{t-6}-0.0307y_{t-7}+0.0993y_{t-8} \-0.0047y_{t-9}+0.0229y_{t-10}-0.0975y_{t-11}+0.0233y_{t-12} \+0.0011y_{t-13}+0.0625y_{t-14}-0.0266y_{t-15}-0.0571y_{t-16}+e_t$$ \end{multline}
+
+```{r}
+tsdiag(m5)
+```
+
+An ACF plot of the residuals show all correlations within the threshold limits indicating that the residuals are behaving like white noise.
+
+We will perform a Box-Pierce and Ljung-Box Test to compute a Ljung test statistic for examining the null hypothesis of independence given a time series. This is also known as a portmanteau test.
+
+```{r}
+Box.test(m5$residuals, type = "Ljung")
+```
+
+
+This is testing to see if the residuals of the model look like white noise. The Ljung-Box test of the model residuals reveals a p-value that is not significant, we surmise that the model is adequate.
+
+
+Part C
+
+Fit another model to $r_t$ using the following command: arima(r, order=c(3,0,2), include.mean = F) This is an ARIMA(3,0,2) model, write down the model. Based on in-sample fitting, which model is preferred?
+
+
+```{r}
+m6 = arima(rtn, order=c(3, 0, 2), include.mean = FALSE)
+print(m6)
+```
+
+$$y_t = 0.5664y_{t-1}-0.8548y_{t-2}+0.1689y_{t-3}+e_t-0.4680e_{t-1}+0.7753e_{t-2}$$
+
+```{r}
+tsdiag(m6)
+```
+
+
+```{r}
+accuracy(m5)
+accuracy(m6)
+```
+
+It appears that M5 AR(16) has lower error than M6.

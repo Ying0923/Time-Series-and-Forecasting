@@ -1,0 +1,1000 @@
+---
+title: "Predict413-TS7-CODE"
+
+output: word_document
+    
+---
+<style>
+body {
+    position: absolute;
+    left: 10px;}
+</style>
+
+<style type="text/css">
+
+.main-container {
+  max-width: 1280px;
+}
+
+</style>
+
+
+```{r setup, include=FALSE}
+
+knitr::opts_chunk$set(echo = FALSE, warning =FALSE, error=FALSE,message=FALSE)
+
+
+```
+
+
+
+
+```{r}
+
+setwd("C:/Users/Admin/Dropbox/Northwestern University/Predict413/Assignment 7/")
+
+```
+
+
+```{r}
+
+da <- read.table("m-ba3dx6113.txt",header=T)
+# str(da)
+sp_return <-da$sprtrn
+
+
+```
+
+#### Q1:EDA
+
+
+Data Summaries and Tables
+
+
+```{r}
+
+library("fBasics")
+basicStats_sp <- basicStats(da)
+
+library("knitr","xtable")
+
+kable(basicStats_sp[c('Mean', 'Median', 'Stdev', 'Skewness', 'Kurtosis', 'Minimum', 'Maximum'), c(3:6)],
+      format="pandoc", caption="Basic Statistics of S&P")
+
+
+```
+
+```{r}
+
+par(mfcol=c(1,2))
+
+h1<-hist(sp_return, breaks=20, main=" S&P Return Histogram", xlab=" Return")
+# axis(side=1, at=seq(0,82,1), pos=0, las=0)
+
+abline(v = mean(sp_return , na.rm = TRUE), col = "red", lwd = 2, lty = 2)
+abline(v = median(sp_return, na.rm = TRUE), col = "green", lwd = 2, lty = 2)
+
+xfit1<-seq(min(sp_return, na.rm = TRUE),max(sp_return, na.rm = TRUE), length=40)
+yfit1<-dnorm(xfit1, mean = mean(sp_return, na.rm = TRUE), sd=sd(sp_return, na.rm = TRUE))
+yfit1<-yfit1*diff(h1$mids[1:2]*length(sp_return))
+lines(xfit1, yfit1, col="blue",lwd=2)
+
+legend("topright",  # location of legend within plot area
+c("Density plot", "Mean", "Median"),
+col = c("blue", "red", "green"),
+lwd = c(2, 2, 2), lty= c(1, 2, 2), cex = 0.6)
+
+
+qqnorm(sp_return); qqline(sp_return)
+
+
+
+```
+
+
+```{r}
+
+da$sp<- log(da$sprtrn+1)
+
+
+library("fBasics")
+basicStats_sp <- basicStats(da)
+
+library("knitr","xtable")
+
+kable(basicStats_sp[c('Mean', 'Median', 'Stdev', 'Skewness', 'Kurtosis', 'Minimum', 'Maximum'), c(3:7)],
+      format="pandoc", caption="Basic Statistics of S&P")
+
+
+```
+
+```{r}
+
+# Produce t-ratio of sample skewness
+
+# Result suggests series is negatively skewed
+
+sp.skew.tratio <- skewness(da$sp)/sqrt(6/length(da$sp))
+
+sp.skew.tratio
+
+```
+
+
+```{r}
+
+log_sp <- da$sp
+  
+par(mfcol=c(1,2))
+h2<-hist(log_sp, breaks=20, main=" Monthly Log Return Histogram", xlab="Log (Monthly Return)")
+# axis(side=1, at=seq(0,82,1), pos=0, las=0)
+
+abline(v = mean(log_sp , na.rm = TRUE), col = "red", lwd = 2, lty = 2)
+abline(v = median(log_sp, na.rm = TRUE), col = "green", lwd = 2, lty = 2)
+
+xfit2<-seq(min(log_sp, na.rm = TRUE),max(log_sp, na.rm = TRUE), length=40)
+yfit2<-dnorm(xfit2, mean = mean(log_sp, na.rm = TRUE), sd=sd(log_sp, na.rm = TRUE))
+yfit2<-yfit2*diff(h2$mids[1:2]*length(log_sp))
+lines(xfit2, yfit2, col="blue",lwd=2)
+
+legend("topright",  # location of legend within plot area
+c("Density plot", "Mean", "Median"),
+col = c("blue", "red", "green"),
+lwd = c(2, 2, 2), lty= c(1, 2, 2), cex = 0.6)
+
+qqnorm(log_sp); qqline(log_sp)
+
+
+```
+```{r}
+# Convert to time series
+
+ts.spx.log <- ts(log_sp, start = c(1961, 1), frequency = 12)
+
+
+
+# Plot the time series
+
+plot(ts.spx.log, xlab = "Year", ylab = "Returns", 
+
+     main = "Natual Log Monthly Returns of S&P 500 Index")
+
+```
+
+
+```{r}
+
+# ACF & PACF
+
+
+par(mfcol = c(1, 1))
+
+
+acf(log_sp)
+
+pacf(log_sp)
+
+
+```
+```{r}
+
+# Is the mean (expected return) significantly different from zero?
+
+t.test(log_sp)
+
+
+
+
+# Reject H0: based on p-value, subtract sample mean from mean equation when
+
+#   testing for ARCH effects
+
+# These are the residuals of the mean equation
+
+sp.log.arch <- (log_sp - mean(log_sp))
+
+```
+
+
+```{r}
+
+# Use squared series of residuals
+
+
+
+# If autocorrelations > critical value lines, then:
+
+#   1. Conclude serial correlations in residuals
+
+#   2. Conclude ARCH effects
+
+
+
+# ACF & PACF of squared residuals - first lag removed
+
+
+
+acf(sp.log.arch^2, 25, xlim = c(1, 25), ylim = c(-0.2, 0.2))
+
+pacf(sp.log.arch^2, 25, ylim = c(-0.2, 0.2))
+
+par(mfcol = c(1, 1))
+
+
+```
+
+
+```{r}
+
+# Use squared series of residuals to check for conditional heteroscedasticity
+
+# H0: first m lags of ACF of squared series = 0
+
+# If we reject H0:, series shows strong ARCH effects
+
+
+
+# Test at lag 12 - reject H0:
+
+Box.test(sp.log.arch^2, lag = 12, type = "Ljung")
+
+```
+```{r}
+
+# Model 1: GARCH(1,1) | Normal Distribution
+
+library(fGarch)
+sp.log.m1 <- garchFit(~garch(1, 1), data = log_sp, trace = F)
+
+# Model adequacy
+
+
+
+# Summary stats
+
+# Includes Ljung-Box results for:
+
+#   Standardized residuals - adequacy of model mean equation
+
+#   Standardized residuals squared - adequacy of model variance equation
+
+summary(sp.log.m1)
+
+
+```
+
+
+```{r}
+
+# Examine residuals for normality assumption
+
+# Assign standardized residuals
+
+sp.log.m1.res <- residuals(sp.log.m1, standardize = T)
+
+
+
+# Q-Q Plot
+
+qqnorm(sp.log.m1.res); qqline(sp.log.m1.res)
+
+
+
+# Shapiro test of normality - H0: iid normal
+
+shapiro.test(sp.log.m1.res)
+
+```
+
+
+```{r}
+
+acf(sp.log.m1.res, 25, xlim = c(1, 25), ylim = c(-0.1, 0.1))
+
+pacf(sp.log.m1.res, 25, ylim = c(-0.1, 0.1))
+
+```
+
+```{r}
+
+# Model 2: GARCH(1,1) | Student-t Innovation
+
+# Build model
+
+sp.log.m2 <- garchFit(~garch(1, 1), data = log_sp, trace = F, 
+                       cond.dist = "std")
+
+
+```
+
+
+```{r}
+# Model adequacy
+
+# Summary stats
+# Includes Ljung-Box results for:
+#   Standardized residuals - adequacy of model mean equation
+#   Standardized residuals squared - adequacy of model variance equation
+summary(sp.log.m2)
+
+
+```
+
+```{r}
+
+# Examine residuals for normality assumption
+# Assign standardized residuals
+sp.log.m2.res <- residuals(sp.log.m2, standardize = T)
+
+# Q-Q Plot
+qqnorm(sp.log.m2.res); qqline(sp.log.m2.res)
+
+# Shapiro test of normality - H0: iid normal
+shapiro.test(sp.log.m2.res)
+
+```
+
+```{r}
+
+acf(sp.log.m2.res, 25, xlim = c(1, 25), ylim = c(-0.1, 0.1))
+pacf(sp.log.m2.res, 25, ylim = c(-0.1, 0.1))
+
+```
+
+
+```{r}
+
+# Model 3: GARCH(1,1) | Skewed Student-t Innovation
+
+
+# Build model
+
+sp.log.m3 <- garchFit(~garch(1, 1), data = log_sp, trace = F, cond.dist = "sstd")
+summary(sp.log.m3)
+
+
+
+```
+
+
+
+
+```{r}
+
+
+# Testing for skewness
+# If the result is significant (p-value < alpha), reject null hypothesis of 
+#   no skewness
+# Reject H0: based on p-value, this model appears most appropriate for data
+
+
+sp.log.m3.skew.tratio <- (0.7736 - 1)/(0.04639)
+sp.log.m3.skew.tratio
+
+sp.log.m3.skew.pv <- 2*pnorm(sp.log.m3.skew.tratio)
+sp.log.m3.skew.pv
+
+```
+
+
+
+```{r}
+
+# Examine residuals for normality assumption
+# Assign standardized residuals
+sp.log.m3.res <- residuals(sp.log.m3, standardize = T)
+
+# Q-Q Plot
+qqnorm(sp.log.m3.res); qqline(sp.log.m3.res)
+
+# Shapiro test of normality - H0: iid normal
+shapiro.test(sp.log.m3.res)
+
+
+```
+
+```{r}
+
+acf(sp.log.m3.res, 25, xlim = c(1, 25), ylim = c(-0.1, 0.1))
+pacf(sp.log.m3.res, 25, ylim = c(-0.1, 0.1))
+
+
+```
+
+### 1.3
+
+
+1.3. Obtain 1-step to 5-step ahead predictions of the log return and its volatility at the forecast origin December 2013.
+
+```{r}
+
+predict(sp.log.m3,5)
+
+
+```
+
+
+
+
+
+
+
+### 1.4
+
+1.4. Fit a GJR model (using APARCH) to the monthly log return series. Write the model to be ???tted. Is the leverage e???ect statistically signi???cant? Why? 
+
+
+```{r}
+
+# Fit a GJR model (using APARCH) to the monthly log returns
+# Write down the fitted model
+# Is the leverage effect statistically significant?
+sp.log.m4 <- garchFit(~aparch(1, 1), data = log_sp, delta = 2, 
+                       include.delta = F, trace = F,cond.dist="sstd")
+
+# Model adequacy
+
+# Summary stats
+# Includes Ljung-Box results for:
+#   Standardized residuals - adequacy of model mean equation
+#   Standardized residuals squared - adequacy of model variance equation
+summary(sp.log.m4)
+
+
+
+```
+
+```{r}
+# Use 1-sided t-test based on H0:
+# H0: gamma <= 0
+# Ha: gamma > 0
+sp.log.m4.tratio <- 0.978
+sp.log.m4.pv <- pnorm(sp.log.m4.tratio, lower.tail = F)
+sp.log.m4.pv
+
+
+```
+
+
+```{r}
+
+
+# Examine residuals for normality assumption
+# Assign standardized residuals
+
+sp.log.m4.res <- residuals(sp.log.m4, standardize = T)
+
+
+# Q-Q Plot
+qqnorm(sp.log.m4.res); qqline(sp.log.m4.res)
+
+# Shapiro test of normality - H0: iid normal
+shapiro.test(sp.log.m4.res)
+
+
+
+```
+
+
+```{r}
+
+# ACF & PACF 
+#   Standardized residuals - adequacy of model mean equation
+#   Standardized residuals squared - adequacy of model variance equation
+# First lag removed
+
+
+acf(sp.log.m4.res, 25, xlim = c(1, 25), ylim = c(-0.1, 0.1))
+pacf(sp.log.m4.res, 25, ylim = c(-0.1, 0.1))
+
+```
+
+
+
+```{r}
+
+# Read data
+er <- ts(read.table('d-fxjpus0514.txt', colClasses="numeric", header = FALSE))
+x2 <- exp(er)   # to plot antilog exchange rate as already logged
+
+
+ basicStats(er)
+ 
+ 
+```
+
+
+
+```{r}
+
+par(mfcol=c(1,2))
+
+h1<-hist(er, breaks=20, main="  log return of daily exchange rate", xlab=" log return")
+# axis(side=1, at=seq(0,82,1), pos=0, las=0)
+
+abline(v = mean(er , na.rm = TRUE), col = "red", lwd = 2, lty = 2)
+abline(v = median(er, na.rm = TRUE), col = "green", lwd = 2, lty = 2)
+
+xfit1<-seq(min(er, na.rm = TRUE),max(er, na.rm = TRUE), length=40)
+yfit1<-dnorm(xfit1, mean = mean(er, na.rm = TRUE), sd=sd(er, na.rm = TRUE))
+yfit1<-yfit1*diff(h1$mids[1:2]*length(er))
+lines(xfit1, yfit1, col="blue",lwd=2)
+
+legend("topright",  # location of legend within plot area
+c("Density plot", "Mean", "Median"),
+col = c("blue", "red", "green"),
+lwd = c(2, 2, 2), lty= c(1, 2, 2), cex = 0.6)
+
+
+qqnorm(er); qqline(er)
+
+
+
+```
+
+
+
+```{r}
+
+par(mfcol=c(1,2))
+
+h1<-hist(x2, breaks=20, main="log return (exp)", xlab=" log return(exp)")
+# axis(side=1, at=seq(0,82,1), pos=0, las=0)
+
+abline(v = mean(x2 , na.rm = TRUE), col = "red", lwd = 2, lty = 2)
+abline(v = median(x2, na.rm = TRUE), col = "green", lwd = 2, lty = 2)
+
+xfit1<-seq(min(x2, na.rm = TRUE),max(x2, na.rm = TRUE), length=40)
+yfit1<-dnorm(xfit1, mean = mean(x2, na.rm = TRUE), sd=sd(x2, na.rm = TRUE))
+yfit1<-yfit1*diff(h1$mids[1:2]*length(x2))
+lines(xfit1, yfit1, col="blue",lwd=2)
+
+legend("topright",  # location of legend within plot area
+c("Density plot", "Mean", "Median"),
+col = c("blue", "red", "green"),
+lwd = c(2, 2, 2), lty= c(1, 2, 2), cex = 0.6)
+
+
+qqnorm(x2); qqline(x2)
+
+
+
+```
+
+```{r}
+
+rtn=diff(log(x2))   # can use er
+
+plot(rtn,type='l')
+
+
+
+
+```
+
+
+```{r}
+
+acf(rtn)
+
+```
+
+
+```{r}
+
+t.test(rtn)
+
+
+```
+
+
+```{r}
+
+Box.test(rtn,lag=10,type='Ljung')
+
+```
+
+```{r}
+
+
+# Testing for ARCH effects
+
+#--------------------------------------
+
+
+
+# Is the mean (expected return) significantly different from zero?
+
+# Fail to reject H0: based on p-value; mean is not significantly different
+
+#   from zero
+
+# Therefore, mean equation is simply return series
+
+t.test(rtn)
+
+```
+
+
+```{r}
+
+require(fGarch)
+
+m1=garchFit(~garch(1,1),data=rtn,trace=F)
+summary(m1)
+
+```
+
+```{r}
+
+# Examine residuals for normality assumption
+
+# Assign standardized residuals
+
+m1.res <- residuals(m1, standardize = T)
+
+
+
+# Q-Q Plot
+
+qqnorm(m1.res); qqline(m1.res)
+
+
+
+# Shapiro test of normality - H0: iid normal
+
+shapiro.test(m1.res)
+
+```
+
+```{r}
+
+acf(m1.res, 25, xlim = c(1, 25), ylim = c(-0.1, 0.1))
+
+pacf(m1.res, 25, ylim = c(-0.1, 0.1))
+
+```
+
+
+```{r}
+
+m2=garchFit(~garch(1,1),include.mean=F,data=rtn,cond.dist="std",trace=F)
+summary(m2)
+
+
+```
+
+```{r}
+
+# Examine residuals for normality assumption
+
+# Assign standardized residuals
+
+m2.res <- residuals(m2, standardize = T)
+
+
+
+# Q-Q Plot
+
+qqnorm(m2.res); qqline(m2.res)
+
+
+
+# Shapiro test of normality - H0: iid normal
+
+shapiro.test(m2.res)
+
+```
+
+
+```{r}
+
+acf(m2.res, 25, xlim = c(1, 25), ylim = c(-0.1, 0.1))
+
+pacf(m2.res, 25, ylim = c(-0.1, 0.1))
+
+
+```
+
+
+```{r}
+
+"Igarch" <- function(rtn,include.mean=F,volcnt=F){
+# Estimation of a Gaussian IGARCH(1,1) model.
+# rtn: return series 
+# include.mean: flag for the constant in the mean equation.
+# volcnt: flag for the constant term of the volatility equation.
+#### default is the RiskMetrics model
+#
+Idata <<- rtn
+Flag <<- c(include.mean,volcnt)
+#
+Mean=mean(Idata); Var = var(Idata); S = 1e-6
+if((volcnt)&&(include.mean)){
+params=c(mu = Mean,omega=0.1*Var,beta=0.85)
+lowerBounds = c(mu = -10*abs(Mean), omega= S^2, beta= S)
+upperBounds = c(mu = 10*abs(Mean), omega = 100*Var, beta = 1-S)
+}
+if((volcnt)&&(!include.mean)){
+params=c(omega=0.1*Var, beta=0.85)
+lowerBounds=c(omega=S^2,beta=S)
+upperBounds=c(omega=100*Var,beta=1-S)
+}
+#
+if((!volcnt)&&(include.mean)){
+params=c(mu = Mean, beta= 0.8)
+lowerBounds = c(mu = -10*abs(Mean), beta= S)
+upperBounds = c(mu = 10*abs(Mean), beta = 1-S)
+}
+if((!volcnt)&&(!include.mean)){
+params=c(beta=0.85)
+lowerBounds=c(beta=S)
+upperBounds=c(beta=1-S)
+}
+# Step 3: set conditional distribution function:
+igarchDist = function(z,hh){dnorm(x = z/hh)/hh}
+# Step 4: Compose log-likelihood function:
+igarchLLH = function(parm){
+include.mean=Flag[1]
+volcnt=Flag[2]
+mu=0; omega = 0
+if((include.mean)&&(volcnt)){
+my=parm[1]; omega=parm[2]; beta=parm[3]}
+if((!include.mean)&&(volcnt)){
+omega=parm[1];beta=parm[2]}
+if((!include.mean)&&(!volcnt))beta=parm[1]
+if((include.mean)&&(!volcnt)){mu=parm[1]; beta=parm[2]}
+#
+z = (Idata - mu); Meanz = mean(z^2)
+e= omega + (1-beta)* c(Meanz, z[-length(Idata)]^2)
+h = filter(e, beta, "r", init=Meanz)
+hh = sqrt(abs(h))
+llh = -sum(log(igarchDist(z, hh)))
+llh
+}
+# Step 5: Estimate Parameters and Compute Numerically Hessian:
+fit = nlminb(start = params, objective = igarchLLH,
+lower = lowerBounds, upper = upperBounds)
+##lower = lowerBounds, upper = upperBounds, control = list(trace=3))
+epsilon = 0.0001 * fit$par
+cat("Estimates: ",fit$par,"\n")
+npar=length(params)
+Hessian = matrix(0, ncol = npar, nrow = npar)
+for (i in 1:npar) {
+for (j in 1:npar) {
+x1 = x2 = x3 = x4  = fit$par
+x1[i] = x1[i] + epsilon[i]; x1[j] = x1[j] + epsilon[j]
+x2[i] = x2[i] + epsilon[i]; x2[j] = x2[j] - epsilon[j]
+x3[i] = x3[i] - epsilon[i]; x3[j] = x3[j] + epsilon[j]
+x4[i] = x4[i] - epsilon[i]; x4[j] = x4[j] - epsilon[j]
+Hessian[i, j] = (igarchLLH(x1)-igarchLLH(x2)-igarchLLH(x3)+igarchLLH(x4))/
+(4*epsilon[i]*epsilon[j])
+}
+}
+cat("Maximized log-likehood: ",igarchLLH(fit$par),"\n")
+# Step 6: Create and Print Summary Report:
+se.coef = sqrt(diag(solve(Hessian)))
+tval = fit$par/se.coef
+matcoef = cbind(fit$par, se.coef, tval, 2*(1-pnorm(abs(tval))))
+dimnames(matcoef) = list(names(tval), c(" Estimate",
+" Std. Error", " t value", "Pr(>|t|)"))
+cat("\nCoefficient(s):\n")
+printCoefmat(matcoef, digits = 6, signif.stars = TRUE)
+
+if((include.mean)&&(volcnt)){
+mu=fit$par[1]; omega=fit$par[2]; beta = fit$par[3]
+}
+if((include.mean)&&(!volcnt)){
+mu = fit$par[1]; beta = fit$par[2]; omega = 0
+}
+if((!include.mean)&&(volcnt)){
+mu=0; omega=fit$par[1]; beta=fit$par[2]
+}
+if((!include.mean)&&(!volcnt)){
+mu=0; omega=0; beta=fit$par[1]
+}
+z=Idata-mu; Mz = mean(z^2)
+e= omega + (1-beta)*c(Mz,z[-length(z)]^2)
+h = filter(e,beta,"r",init=Mz)
+vol = sqrt(abs(h))
+
+Igarch <- list(par=fit$par,volatility = vol)
+}
+
+
+```
+
+
+
+```{r}
+
+m3=Igarch(rtn)
+
+```
+
+
+
+```{r}
+
+m4=garchFit(~aparch(1,1),include.mean=F,delta=2,include.delta=F,trace=F,cond.dist="std")
+summary(m4)
+```
+
+
+```{r}
+
+
+#### The following is doing the same thing.
+m4=garchFit(~garch(1,1),include.mean=F,trace=F,cond.dist="std",leverage=T)
+summary(m4)
+
+
+```
+
+
+### 2.3
+
+2.3. (b) Let rt be the daily log return. For numeric stability, consider the percentage log return, i.e. xt = 100rt. Write the equation for this model.
+
+
+```{r}
+Tgarch11 = function(x,cond.dist="norm")
+{
+# Estimation of TGARCH(1,1) model with Gaussian or Student-t innovations
+# Step 1: Initialize Time Series Globally:
+Tx <<- x
+# Step 2: Initialize Model Parameters and Bounds:
+Meanx = mean(Tx); Varx = var(Tx); S = 1e-6
+if(cond.dist=="std"){
+params = c(mu = Meanx, omega = 0.1*Varx, alpha = 0.1, gam1= 0.02, beta = 0.81, shape=6)
+lowerBounds = c(mu = -10*abs(Meanx), omega = S^2, alpha = S, gam1=S, beta = S, shape=3)
+upperBounds = c(mu = 10*abs(Meanx), omega = 100*Varx, alpha = 1-S, gam1 = 1-S, beta = 1-S, shape=30)
+}
+else{
+params = c(mu = Meanx, omega = 0.1*Varx, alpha = 0.1, gam1= 0.02, beta = 0.81)
+lowerBounds = c(mu = -10*abs(Meanx), omega = S^2, alpha = S, gam1=S, beta = S)
+upperBounds = c(mu = 10*abs(Meanx), omega = 10*Varx, alpha = 1-S, gam1 = 1-S, beta = 1-S)
+}
+# Step 3: Set Conditional Distribution Function:
+garchDist = function(z, hh, cond.dist, nu1) { 
+if(cond.dist=="std"){LL=dstd(x = z/hh, nu=nu1)/hh}
+else{
+LL=dnorm(x = z/hh)/hh }
+LL
+}
+# Step 4: Compose log-Likelihood Function:
+garchLLH = function(parm) {
+mu = parm[1]; omega = parm[2]; alpha = parm[3]; gam1=parm[4]; beta = parm[5]
+shape = 0; 
+if(length(parm)==6){
+shape=parm[6]
+cond.dist="std"
+}
+else
+{cond.dist="norm"}
+z = (Tx-mu); Mean = mean(z^2)
+zm1=c(0,z[-length(z)])
+idx=seq(zm1)[zm1 < 0]; z1=rep(0,length(z)); z1[idx]=1
+# Use Filter Representation:
+e = omega + alpha * c(Mean, z[-length(z)]^2) + gam1*z1*c(Mean,z[-length(z)]^2)
+h = filter(e, beta, "r", init = Mean)
+hh = sqrt(abs(h))
+llh = -sum(log(garchDist(z, hh, cond.dist, shape)))
+llh }
+# Step 5: Estimate Parameters and Compute Numerically Hessian:
+fit = nlminb(start = params, objective = garchLLH,
+lower = lowerBounds, upper = upperBounds) ### control = list(trace=3))
+epsilon = 0.0001 * fit$par
+npar=length(params)
+Hessian = matrix(0, ncol = npar, nrow = npar)
+for (i in 1:npar) {
+for (j in 1:npar) {
+x1 = x2 = x3 = x4  = fit$par
+x1[i] = x1[i] + epsilon[i]; x1[j] = x1[j] + epsilon[j]
+x2[i] = x2[i] + epsilon[i]; x2[j] = x2[j] - epsilon[j]
+x3[i] = x3[i] - epsilon[i]; x3[j] = x3[j] + epsilon[j]
+x4[i] = x4[i] - epsilon[i]; x4[j] = x4[j] - epsilon[j]
+Hessian[i, j] = (garchLLH(x1)-garchLLH(x2)-garchLLH(x3)+garchLLH(x4))/
+(4*epsilon[i]*epsilon[j])
+}
+}
+cat("Log likelihood at MLEs: ","\n")
+print(-garchLLH(fit$par))
+# Step 6: Create and Print Summary Report:
+se.coef = sqrt(diag(solve(Hessian)))
+tval = fit$par/se.coef
+matcoef = cbind(fit$par, se.coef, tval, 2*(1-pnorm(abs(tval))))
+dimnames(matcoef) = list(names(tval), c(" Estimate",
+" Std. Error", " t value", "Pr(>|t|)"))
+cat("\nCoefficient(s):\n")
+printCoefmat(matcoef, digits = 6, signif.stars = TRUE)
+# compute output
+est=fit$par
+mu = est[1]; omega = est[2]; alpha = est[3]; gam1=est[4]; beta = est[5]
+z=(Tx-mu); Mean = mean(z^2)
+zm1=c(0,z[-length(z)])
+idx=seq(zm1)[zm1 < 0]; z1=rep(0,length(z)); z1[idx]=1
+e = omega + alpha * c(Mean, z[-length(z)]^2) + gam1*z1*c(Mean,z[-length(z)]^2)
+h = filter(e, beta, "r", init = Mean)
+sigma.t = sqrt(abs(h))
+
+Tgarch11 <- list(residuals = z, volatility = sigma.t, par=est)
+}
+
+
+```
+
+
+
+
+
+```{r}
+
+#### In terms of percentage
+y1=rtn*100
+m5=Tgarch11(y1,cond.dist="std")
+
+
+```
+
+```{r}
+
+# Examine residuals for normality assumption
+
+# Assign standardized residuals
+
+m5.res <- residuals(m5, standardize = T)
+
+
+
+# Q-Q Plot
+
+qqnorm(m5.res); qqline(m5.res)
+
+
+
+# Shapiro test of normality - H0: iid normal
+
+shapiro.test(m5.res)
+
+```
+
+
+```{r}
+
+acf(m5.res, 25, xlim = c(1, 25), ylim = c(-0.1, 0.1))
+
+pacf(m5.res, 25, ylim = c(-0.1, 0.1))
+
+
+```
+
+```{r}
+
+m6=garchFit(~garch(1,1),data=y1,trace=F,cond.dist="std",leverage=T)
+summary(m6)
+
+
+```
+```{r}
+m6=garchFit(~garch(1,1),data=y1,trace=F,cond.dist="std",leverage=T,include.mean=F)
+summary(m6)
+
+```
+
+
+```{r}
+
+m6.res <- residuals(m6, standardize = T)
+
+# Q-Q Plot
+
+qqnorm(m6.res); qqline(m6.res)
+
+
+
+# Shapiro test of normality - H0: iid normal
+
+shapiro.test(m6.res)
+```
+

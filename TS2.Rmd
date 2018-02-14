@@ -1,0 +1,315 @@
+---
+title: "Predict431-TS2-CODE"
+
+output: word_document
+    
+---
+<style>
+body {
+    position: absolute;
+    left: 10px;}
+</style>
+
+<style type="text/css">
+
+.main-container {
+  max-width: 1280px;
+}
+
+</style>
+
+
+```{r setup, include=FALSE}
+
+knitr::opts_chunk$set(echo = FALSE, warning =FALSE, error=FALSE,message=FALSE)
+
+
+```
+
+
+```{r}
+
+setwd("C:/Users/Admin/Dropbox/Northwestern University/Predict413/Assignment 2/")
+
+da <- read.table("d-nflx3dx0913.txt",header=T)
+head(da)
+
+```
+
+
+#### About the  'd-n???x3dx0913.txt'
+
+- **PERMNO**: CRSP 5-digit integer for all common securities 
+- **date**: yearmonthday as, e.g., 20150131 
+- **nfx**: Netflix company stock code 
+- **vwretd**: CRSP value-weighted index 
+- **ewretd**: CRSP equal-weighted index 
+- **sprtrn**: S&P composite index 
+
+
+#### About the  'ukcars' - Quarterly UK passenger vehicle production data 
+
+*From fpp Package*
+
+- year (beginning with 1997 and ending with 2005) 
+- quarter (1, 2, 3 , 4, in sequence by record) 
+- production quantity
+
+
+Your objective is to explore the relationship among the variables, identify what types of data each variable is, and respond to each part in the Procedure Section that follows.
+
+
+###  EDA (1 point) 
+ 
+ 
+Consider the daily simple returns of Net???ix (NFLX) stock, CRSP valueweighted index (VW), CRSP equal-weighted index (EW), and the S&P composite index (SP) from January 2, 2009 to December 31, 2013. Returns of the three indices include dividends. The data are in the ???le d-n???x3dx0913.txt and the columns show PERMNO, date, n???x, vwretd, ewretd, and sprtn, respectively, with the last four columns showing the simple returns.
+
+
+(a) Conduct, contrast, and compare the EDA of the raw data 
+
+
+```{r}
+library("fBasics")
+
+
+# basicStats(da$ge)
+# basicStats(da$vwretd)
+# basicStats(da$ewretd)
+# basicStats(da$sprtrn)
+
+
+basicStats_da <- basicStats(da)
+
+library("knitr","xtable")
+
+kable(basicStats_da[c('Mean', 'Stdev', 'Skewness', 'Kurtosis', 'Minimum', 'Maximum'), -(1:2)], format="pandoc", caption="Basic Statistics of the monthly returns-Original")
+
+```
+
+
+ The log-transformed data 
+
+
+```{r}
+# natural logarithm
+
+log_da = log(da[,-(1:2)]+1)  # Transform the simple returns to log returns. We have negative values, +1 to make sure base in log are positive
+
+basicStats_log_da <- basicStats(log_da)
+
+
+kable(basicStats_log_da[c('Mean', 'Stdev', 'Skewness', 'Kurtosis', 'Minimum', 'Maximum'), ], format="pandoc", caption="Basic Statistics of the monthly  returns- Log Tranformation")
+
+```
+
+
+(b) Test the null hypothesis that the mean of the log returns of Net???ix stock is zero. Interpret
+
+
+ Fail to reject the null hypothesis at a 0.05 level
+
+```{r}
+
+t.test(log_da$nflx)
+
+```
+
+(c) What are the pairwise associations between the variables? Interpret.
+
+```{r , fig.height=5, fig.width=5}
+
+# Correlations 
+
+plot(da[,-(1:2)])
+
+library(dplyr) 
+da.cor <- da %>% 
+  dplyr::select(nflx:sprtrn) %>% 
+  cor(use = "pairwise.complete.obs") 
+
+da.cor
+
+library(corrplot) 
+corrplot(da.cor, type = "full", method = "number", tl.srt=45, tl.col = "black", title = "") 
+
+```
+
+
+(d)  Obtain the empirical density plot and QQ plot of the daily log returns of NFLX stock and the S&P composite index. Interpret the plots.
+
+
+```{r}
+
+d1=density(da$nflx)
+d2=density(da$sprtrn)
+
+par(mfcol=c(1,2))
+plot(d1$x,d1$y,xlab='returns',ylab='density',main="Net???ix Stock Returns Density",type='l')
+plot(d2$x,d2$y,xlab='returns',ylab='density',main="S&P Stock Returns Density",type='l')
+
+```
+
+
+
+2. Hypothesis tests (1 point)  Consider again the daily simple returns of Net???ix (NFLX) stock, CRSP value-weighted index (VW), CRSP equal-weighted index (EW), and the S&P composite index (SP) from January 2, 2009 to December 31, 2013. Returns of the three indices include dividends. The data are in the ???le d-n???x3dx0913.txt and the columns show PERMNO, date, n???x, vwretd, ewretd, and sprtn, respectively, with the last four columns showing the simple returns.
+
+
+
+(a) Test the null hypothesis that the log return (ln(nflx)) is symmetric with respect to its mean.
+
+```{r}
+
+nflx=log_da$nflx
+tm3=skewness(nflx)/sqrt(6/length(nflx))
+tm3
+tk=kurtosis(nflx)/sqrt(24/length(nflx))
+tk
+t.test(nflx)
+
+```
+
+
+(b) Test H0 : K = 0 versus Ha : K 6= 0, where K denotes kurtosis.
+
+```{r}
+
+
+# compute kurtosis test
+kurtosis(da$nflx)
+
+tk=kurtosis(da$nflx)/sqrt(24/length(da$nflx))
+tk
+
+paste(2*(1-pnorm(abs(tk))))
+
+```
+(c) Construct a 95% con???dence interval (CI) for the expected daily log returns of Net???ix stock.
+
+```{r}
+
+
+t.test(da$nflx)   # the 95% confidence interval will be appeared in the result
+
+
+# Below is how to calcuate 95% CI by hand
+
+error <- qt(0.975,df=length(da$nflx)-1)*sd(da$nflx)/sqrt(length(da$nflx))
+error
+
+left <- mean(da$nflx)-error
+left
+right <- mean(da$nflx)+error
+right
+
+
+```
+
+
+(d) Describe the meaning of the CI as if you are explaining it to a client or employer.
+
+
+
+3. Time series models (2.0 points) use the quarterly UK passenger vehicle production data from 1997:1-2005:1 (data set ukcars) from the Hyndeman text. Begin by making a time plot of your data and describe the main features of the series.
+
+
+the main features of the series.
+
+**The plot indicates the presence of seasonality. It appears that Q3 would be the yearly low, aside from 2002 where the fourth quarter is lower than the third.
+
+```{r}
+
+require(fpp)
+
+data(ukcars)
+plot(ukcars)
+ukcars <- window(ukcars, start=1997)
+plot(ukcars, type="o", xlab="Year", ylab="UK Auto Production (x1000)")
+
+
+```
+
+
+(a) Decompose the series using STL and obtain the seasonally adjusted data.
+
+** The plot indicates that the seasonal fluctuations do not vary with the level of the time series. The smoothed trend plot indicates a gradual up-trend until just before 2000, with a steep down-trend starting around 2000, then a gradual up-trend starting around 2001.
+
+```{r}
+
+
+# Make s.window as large as possible while keeping trend smooth
+car_stl <- stl(ukcars, s.window="periodic")
+plot(car_stl)
+
+
+car_seas_adj = seasadj(car_stl)
+car_seas_factors = car_stl$time.series[2:11, "seasonal"]  # Acquire the seasonal Factors
+
+```
+
+(b) Forecast the next two years of the series using an additive damped trend method applied to the seasonally adjusted data. Then re-seasonalize the forecasts. Record the parameters of the method and report the RMSE of the one-step forecasts from your method. 
+
+
+
+```{r}
+
+fit_damped_seas_adj = holt(car_seas_adj, damped = TRUE)
+print(fit_damped_seas_adj)
+plot(fit_damped_seas_adj, xlab = "Years", ylab = "UK Auto Production (x1000)")
+print(fit_damped_seas_adj$model)
+print(accuracy(fit_damped_seas_adj))
+resea_fit_damed_seas_adj = fit_damped_seas_adj$mean + car_seas_factors   # reseasonalize the forecasted data
+plot(ukcars, type = "o", xlab = "Years", ylab = "UK Auto Production (x1000)", xlim = c(1997, 2008))
+lines(resea_fit_damed_seas_adj, type = "o", col = "blue")
+
+```
+
+
+(c) Forecast the next two years of the series using Holt's linear method applied to the seasonally adjusted data. Then reseasonalize the forecasts. Record the parameters of the method and report the RMSE of the one-step forecasts from your method.
+
+```{r}
+
+fit_linear = holt(car_seas_adj)
+print(fit_linear)
+plot(fit_linear, xlab = "Years", ylab = "UK Auto Production (x1000)")
+print(fit_linear$model)
+print(accuracy(fit_linear))
+resea_linear = fit_linear$mean + car_seas_factors
+plot(ukcars, type = "o", xlab = "Years", ylab = "UK Auto Production (x1000)", xlim = c(1997, 2008))
+lines(resea_linear, type = "o", col = "blue")
+
+
+```
+
+
+(d) Now use ets() to choose a seasonal model for the data.
+
+```{r}
+
+fit_ets = ets(ukcars, model = "ZZZ")
+print(fit_ets)
+plot(forecast(fit_ets), xlab = "Years", ylab = "UK Car Production (In Thousands)")
+print(accuracy(fit_ets))
+
+```
+
+
+(e) Compare the RMSE of the ???tted model with the RMSE of the model you obtained using an STL decomposition with Holt's method. Which gives the better in-sample ???ts?
+
+```{r}
+print(paste("Additive-Damped Model RMSE: ", accuracy(fit_damped_seas_adj)[2]))
+print(paste("Holt Model RMSE: ", accuracy(fit_linear)[2]))
+print(paste("ETS Model RMSE: ", accuracy(fit_ets)[2]))
+```
+
+
+(f) Compare the forecasts from the two approaches? Which seems most reasonable?
+
+** The ETS model seems to be the most reasonable, showing a continuation of the most recent observed trends. We can see, if we compare side by side that both Holt Models show abrupt discontinuation of the recent observed trends.
+```{r}
+
+par(mfrow = c(3,1))
+p_damped = plot(forecast(fit_damped_seas_adj), type = "o", xlab = "Years", ylab = "Production")
+p_linear = plot(forecast(fit_linear), type = "o", xlab = "Years", ylab = "Production")
+p_ets = plot(forecast(fit_ets), type = "o", xlab = "Years", ylab = "Production")
+
+```

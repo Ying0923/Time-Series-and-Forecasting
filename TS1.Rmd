@@ -1,0 +1,354 @@
+---
+title: "Predict431-TS1-CODE"
+
+output: word_document
+    
+---
+<style>
+body {
+    position: absolute;
+    left: 10px;}
+</style>
+
+<style type="text/css">
+
+.main-container {
+  max-width: 1280px;
+}
+
+</style>
+
+
+```{r setup, include=FALSE}
+
+knitr::opts_chunk$set(echo = FALSE, warning =FALSE, error=FALSE,message=FALSE)
+
+
+```
+
+
+```{r}
+
+setwd("C:/Users/Admin/Dropbox/Northwestern University/Predict413/Assignment 1/")
+
+da <- read.table("m-ge3dx8113.txt",header=T)
+head(da)
+
+```
+
+
+- **PERMNO**: CRSP 5-digit integer for all common securities 
+- **date**: yearmonthday as, e.g., 20150131 
+- **ge**: General Electric company stock code 
+- **vwretd**: CRSP value-weighted index 
+- **ewretd**: CRSP equal-weighted index 
+- **sprtrn**: S&P composite index 
+
+
+
+
+Your objective is to explore the relationship among the variables, identify what types of data each variable is, and respond to each part in the Procedure Section that follows.
+
+
+###  EDA (1 point) 
+ 
+Consider the monthly log returns of GE stock from January 1981 to December 2013. The original data are monthly returns for General Electric (GE) stock, CRSP valueweighted index (VW), CRSP equal-weighted index (EW), and S&P composite index (SP) from January 1981 to December 2013. The returns include dividend distributions. The data ???le is m-ge3dx8113.txt with column names PERMNO of GE, date, ge, vwretd, ewretd, and sprtrn, respectively.
+
+
+(a) Compute the sample mean, standard deviation, skewness, excess kurtosis, minimum, and maximum of each untransformed simple return series. What do these statistics tell you?
+
+```{r}
+library("fBasics")
+
+
+# basicStats(da$ge)
+# basicStats(da$vwretd)
+# basicStats(da$ewretd)
+# basicStats(da$sprtrn)
+
+
+basicStats_da <- basicStats(da)
+
+library("knitr","xtable")
+
+kable(basicStats_da[c('Mean', 'Stdev', 'Skewness', 'Kurtosis', 'Minimum', 'Maximum'), -(1:2)], format="pandoc", caption="Basic Statistics of the monthly returns-Original")
+
+```
+
+
+(b) Transform the simple returns to log returns (e.g., ln(ge)). Compute the sample mean, standard deviation, skewness, excess kurtosis, minimum, and maximum of each log return series. Interpret and compare to the untransformed statistics above. 
+
+
+```{r}
+# natural logarithm
+log_da = log(da[,-(1:2)]+1)  # Transform the simple returns to log returns. We have negative values, +1 to make sure base in log are positive
+
+basicStats_log_da <- basicStats(log_da)
+
+
+kable(basicStats_log_da[c('Mean', 'Stdev', 'Skewness', 'Kurtosis', 'Minimum', 'Maximum'), ], format="pandoc", caption="Basic Statistics of the monthly  returns- Log Tranformation")
+
+```
+(c) Test the null hypothesis that the mean of the log returns of GE stock is zero. Interpret
+
+
+ Fail to reject the null hypothesis at a 0.05 level
+
+```{r}
+t.test(log_da$ge)
+```
+
+(d) What are the pairwise associations between the variables? Interpret.
+
+```{r , fig.height=5, fig.width=5}
+
+# Correlations 
+
+library(dplyr) 
+da.cor <- da %>% 
+  dplyr::select(ge:sprtrn) %>% 
+  cor(use = "pairwise.complete.obs") 
+
+da.cor
+
+library(corrplot) 
+corrplot(da.cor, type = "full", method = "number", tl.srt=45, tl.col = "black", title = "") 
+
+```
+
+
+(e) Obtain the empirical density plot and QQ plot of the daily log returns of GE stock and the S&P composite index. Interpret these plots
+
+```{r}
+
+d1=density(da$ge)
+d2=density(da$sprtrn)
+
+par(mfcol=c(1,2))
+plot(d1$x,d1$y,xlab='returns',ylab='density',main="GE Stock Returns Density",type='l')
+plot(d2$x,d2$y,xlab='returns',ylab='density',main="S&P Stock Returns Density",type='l')
+
+```
+
+
+
+2. Hypothesis tests (1 point) Consider again the monthly log returns of GE stock from January 1981 to December 2013. The original data are monthly returns for General Electric (GE) stock, CRSP value-weighted index (VW), CRSP equal-weighted index (EW), and S&P composite index (SP) from January 1981 to December 2013. The returns include dividend distributions. The data ???le is m-ge3dx8113.txt with column names PERMNO of GE, date, ge, vwretd, ewretd, and sprtrn, respectively. Perform the following and draw conclusions using the 5% signi???cance level.
+
+
+(a) Construct a 95% con???dence interval for the monthly log returns of GE stock.
+
+```{r}
+
+t.test(da$ge)   # the 95% confidence interval will be appeared in the result
+
+
+# Below is how to calcuate 95% CI by hand
+
+error <- qt(0.975,df=length(da$ge)-1)*sd(da$ge)/sqrt(length(da$ge))
+error
+
+left <- mean(da$ge)-error
+left
+right <- mean(da$ge)+error
+right
+
+```
+
+
+(b) Test H0 : m3 = 0 versus Ha : m3 != 0, where m3 denotes the skewness of the return. 
+
+Fail to reject the Null of Symmetry
+
+```{r}
+
+
+# compute skewness test
+skewness.test_ge <-skewness(da$ge)/sqrt(6/length(da$ge)) 
+skewness.test_ge 
+
+# computing the p-value
+paste(2*(1-pnorm(abs(skewness.test_ge))))  
+
+```
+
+(c) Test H0 : K = 3 versus Ha : K 6= 3, where K denotes kurtosis. 
+
+Reject null hypothesis at a 0.05 level
+
+```{r}
+
+# compute kurtosis test
+kurtosis(da$ge)
+
+tk=kurtosis(da$ge)/sqrt(24/length(da$ge))
+tk
+
+paste(2*(1-pnorm(abs(tk))))
+
+```
+
+
+
+3. Time series models 1 (1 point) Use the monthly Australian short-term overseas visitors data, May 1985 - April 2005. (Data set: visitors) in the Hyndeman text.
+
+(a) Make a time plot of your data and describe the main features of the series. 
+
+
+```{r}
+
+# See Chapter 7 (Exponential Smoothing), Hyndeman text
+# https://www.otexts.org/fpp/
+
+suppressMessages(require(fpp))
+plot(visitors)
+
+
+# There is an upward trend and a monthly seasonal component. The series appears to peak around Feb or March of each year.
+
+```
+
+(b) Forecast the next two years using Holt-Winters' multiplicative method. Assess the forecast viablility. 
+
+```{r}
+
+
+aust <- window(visitors)
+fit_multi <- hw(aust,seasonal="multiplicative")
+print(fit_multi)
+
+
+
+
+```
+
+
+
+(c) Why is multiplicative seasonality necessary here?
+
+Assuming a time series with changes in the level, the seasonal component may interact with the level in an additive or multiplicative way. This essentially means that in the additive case the amplitude of the seasonality remains constant, while in the multiplicative it changes as the level does.
+
+
+Multiplicative method is preferred when the seasonal variations are changing proportionally to the level of the series. In this series, it appears that the variations are growing.
+
+
+(d) Experiment with making the trend exponential and/or damped. Interpret and compare. 
+
+
+
+```{r , fig.height=5, fig.width=10}
+
+
+fit_multi_damped <- hw(aust,seasonal="multiplicative",damped=TRUE)
+plot(forecast(fit_multi_damped))
+
+fit_multi_exp <- hw(aust,seasonal="multiplicative",exponential=TRUE)
+plot(forecast(fit_multi_exp, main=""))
+
+fit_multi_exp_damped <- hw(aust,seasonal="multiplicative",
+exponential=TRUE,damped=TRUE)
+plot(forecast(fit_multi_exp_damped))
+
+
+
+
+
+```
+
+
+(e) Compare the RMSE of the one-step forecasts from the various methods. Which do you prefer and why?
+
+It appears that the lowest RMSE was within tthe Multiplicative and Damped model, which fit the data best
+
+```{r}
+
+
+accuracy(fit_multi)
+accuracy(fit_multi_damped)
+accuracy(fit_multi_exp_damped)
+
+
+```
+
+
+
+4. Time series models 2 (1 point) Use the monthly Australian short-term overseas visitors data, May 1985 - April 2005 to ???t each of the following models to the same data:
+(a) A multiplicative Holt-Winters' method; 
+
+```{r , fig.height=5, fig.width=10}
+
+
+fit_multi <- hw(aust,seasonal="multiplicative")
+plot(fit_multi)
+
+
+hist(residuals(fit_multi),nclass=20)
+
+
+plot(residuals(fit_multi))
+
+
+accuracy(fit_multi)
+
+
+```
+
+
+(b) An ETS model;
+
+```{r , fig.height=5, fig.width=10}
+
+
+fit_mam <- ets(visitors, model="ZZZ")
+plot(forecast(fit_mam))
+hist(residuals(fit_mam),nclass=20)
+plot(residuals(fit_mam))
+accuracy(fit_mam)
+
+```
+
+(c) An additive ETS model applied to a Box-Cox transformed series;
+
+```{r , fig.height=5, fig.width=10}
+
+
+fit_ana_box <- ets(visitors,additive.only=TRUE,lambda=TRUE)
+plot(forecast(fit_ana_box))
+hist(residuals(fit_ana_box),nclass=20)
+plot(residuals(fit_ana_box))
+accuracy(fit_ana_box)
+
+```
+
+
+(d) A seasonal naive method applied to the Box-Cox transformed series;
+
+
+```{r , fig.height=5, fig.width=10}
+
+fit_naive <- snaive(visitors,lambda=TRUE)
+plot(forecast(fit_naive))
+hist(residuals(fit_naive),nclass=20)
+plot(residuals(fit_naive))
+accuracy(fit_naive)
+
+
+```
+
+(e) An STL decomposition applied to the Box-Cox transformed data followed by an ETS model applied to the seasonally adjusted (transformed) data.
+
+```{r , fig.height=5, fig.width=10}
+
+fit_stld <- stlf(visitors,method="ets",lambda=TRUE) 
+plot(forecast(fit_stld))
+hist(residuals(fit_stld),nclass=20)
+plot(residuals(fit_stld))
+accuracy(fit_stld)
+```
+
+
+(f) For each model, look at the residual diagnostics and compare the forecasts for the next two years. Which do you prefer and why?
+
+Looking through the forecasts, I'd rule out model 3 and 4 as the growth does not seem to match the upward trend. The residuals on the naive model in particular do not look normal or random. Although the RSME fit is best for the last model, the residual pattern does not look random (exhibits heteroschedascity). Therefore, I would choose the second model (ETS MAM) as it looks like the best balance of forecast quality, RMSE score, and no apparent issues in the residual diagnostics.
+
+
+5. Report (1 point) For each data set, provide an summary from which an interested party can take action. Use the appropriate plots and statistics needed to support your recommendations.

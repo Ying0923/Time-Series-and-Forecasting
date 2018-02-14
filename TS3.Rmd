@@ -1,0 +1,217 @@
+---
+title: "Predict431-TS3-CODE"
+
+output: word_document
+    
+---
+<style>
+body {
+    position: absolute;
+    left: 10px;}
+</style>
+
+<style type="text/css">
+
+.main-container {
+  max-width: 1280px;
+}
+
+</style>
+
+
+```{r setup, include=FALSE}
+
+knitr::opts_chunk$set(echo = FALSE, warning =FALSE, error=FALSE,message=FALSE)
+
+
+```
+
+
+```{r}
+
+setwd("C:/Users/Admin/Dropbox/Northwestern University/Predict413/Assignment 3/")
+
+da <- read.table("m-umcsent.txt",header=T)
+head(da)
+
+```
+
+
+
+Plot the consumer monthly sentiment series:
+```{r}
+csent=da$VALUE
+tdx=da[,1]+da[,2]/12
+plot(tdx,csent,xlab='year',ylab='sentiment',type='l',main="UM Consumer Sentiment")
+
+
+
+```
+
+we calculate seasonal component of the data using stl(). STL is a flexible function for decomposing and forecasting the series. It calculates the seasonal component of the series using smoothing, and adjusts the original series by subtracting seasonality 
+
+
+
+Note that stl() by default assumes additive model structure. Use allow.multiplicative.trend=TRUE to incorporate the multiplicative model.
+
+In the case of additive model structure, the same task of decomposing the series and removing the seasonality can be accomplished by simply subtracting the seasonal component from the original series. seasadj() is a convenient method inside the forecast package.
+
+As for the frequency parameter in ts() object, we are specifying periodicity of the data, i.e., number of observations per period. Since we are using smoothed monthly data, we have 12 observations per year
+
+
+Perform an STL decomposition to investigate the assumption that the data has a seasonal component.
+
+
+We are able to see the seasonal component with this decomposition.
+
+```{r}
+
+library ("forecast")
+
+a <- csent
+a.ts <- ts(a, frequency = 12)  # number of observations per period. 12 observations per year
+decomp_csent_stl = stl(a.ts, s.window="periodic") # calculate seasonal component of the data
+deseasonal_csent <- seasadj(decomp_csent_stl) # decomposing the series and removing the seasonality
+plot(decomp_csent_stl)
+
+```
+
+Fitting an ARIMA model requires the series to be stationary. A series is said to be stationary when its mean, variance, and autocovariance are time invariant. This assumption makes intuitive sense: Since ARIMA uses previous lags of series to model its behavior, modeling stable series with consistent properties involves less uncertainty. 
+
+
+
+The augmented Dickey-Fuller (ADF) test is a formal statistical test for stationarity. The null hypothesis assumes that the series is non-stationary. ADF procedure tests whether the change in Y can be explained by lagged value and a linear trend. If contribution of the lagged value to the change in Y is non-significant and there is a presence of a trend component, the series is non-stationary and null hypothesis will not be rejected.
+
+
+/Is there a unit root in the monthly sentiment series? Why?:
+
+We will use the Augumented Dickey-Fuller Test, which computes the Augmented Dickey-Fuller test for the null that the time series has a unit root:
+
+we fail to reject the null hypthothesis, which suggests that the time series is non-stationary./
+
+```{r}
+
+library("tseries")
+
+adf.test(csent, alternative = "stationary")
+
+
+
+```
+
+
+Usually, non-stationary series can be corrected by a simple transformation such as differencing. Differencing the series can help in removing its trend or cycles. The idea behind differencing is that, if the original data series does not have constant properties over time, then the change from one period to another might. The difference is calculated by subtracting one period's values from the previous period's values:
+
+
+Autocorrelation plots (also known as ACF or the auto correlation function) are a useful visual tool in determining whether a series is stationary. These plots can also help to choose the order parameters for ARIMA model. If the series is correlated with its lags then, generally, there are some trend or seasonal components and therefore its statistical properties are not constant over time.
+
+ACF plots display correlation between a series and its lags. In addition to suggesting the order of differencing, ACF plots can help in determining the order of the M A (q) model. Partial autocorrelation plots (PACF), as the name suggests, display correlation between a variable and its lags that is not explained by previous lags. PACF plots are useful when determining the order of the AR(p) model.
+
+R plots 95% significance boundaries as blue dotted lines. There are significant autocorrelations with many lags in our bike series, as shown by the ACF plot below. However, this could be due to carry-over correlation from the first or early lags, since the PACF plot only shows a spike at lags 1 and 7:
+
+
+```{r}
+
+# Acf(csent, main='')
+# Pacf(csent, main='')
+
+tsdisplay (csent)
+
+```
+
+
+
+
+```{r}
+change <- diff(csent)
+tsdisplay (change)
+```
+
+```{r}
+ar(change, method ="mle")
+
+```
+
+
+```{r}
+adf.test(change, k=5)
+```
+
+```{r}
+t.test(change)
+```
+
+```{r}
+Box.test(change,lag=12,type='Ljung')
+```
+
+```{r}
+
+```
+
+
+
+We can start with the order of d = 1 and re-evaluate whether further differencing is needed.
+
+The augmented Dickey-Fuller test on differenced data rejects the null hypotheses of non-stationarity. Plotting the differenced series, we see an oscillating pattern around 0 with no visible strong trend. This suggests that differencing of order 1 terms is sufficient and should be included in the model. 
+
+```{r}
+
+count_d1 = diff(deseasonal_csent, differences = 1)
+plot(count_d1)
+adf.test(count_d1, alternative = "stationary")
+
+
+```
+
+
+Next, spikes at particular lags of the differenced series can help inform the choice of p or q for our model:
+
+```{r}
+
+Acf(count_d1, main='ACF for Differenced Series')
+Pacf(count_d1, main='PACF for Differenced Series')
+
+```
+
+Now let's fit a model. The forecast package allows the user to explicitly specify the order of the model using the arima() function, or automatically generate a set of optimal (p, d, q) using auto.arima(). This function searches through combinations of order parameters and picks the set that optimizes model fit criteria.
+
+There exist a number of such criteria for comparing quality of fit across multiple models. Two of the most widely used are Akaike information criteria (AIC) and Baysian information criteria (BIC). These criteria are closely related and can be interpreted as an estimate of how much information would be lost if a given model is chosen. When comparing models, one wants to minimize AIC and BIC.
+
+While auto.arima() can be very useful, it is still important to complete steps 1-5 in order to understand the series and interpret model results. Note that auto.arima() also allows the user to specify maximum order for (p, d, q), which is set to 5 by default.
+
+We can specify non-seasonal ARIMA structure and fit the model to de-seasonalize data. Parameters (1,1,1) suggested by the automated procedure are in line with our expectations based on the steps above; the model incorporates differencing of degree 1, and uses an autoregressive term of first lag and a moving average model of order 1:
+
+```{r}
+
+auto.arima(deseasonal_csent, seasonal=FALSE)
+
+
+```
+
+Using the ARIMA notation introduced above, the fitted model can be written as
+
+$$ \hat Y_{d_t} = 0.551 Y_{t-1} - 0.2496 e_{t-1} + E$$
+So now we have fitted a model that can produce a forecast, but does it make sense? Can we trust this model? We can start by examining ACF and PACF plots for model residuals. If model order parameters and structure are correctly specified, we would expect no significant autocorrelations present. 
+
+
+```{r}
+
+fit<-auto.arima(deseasonal_csent, seasonal=FALSE)
+tsdisplay(residuals(fit), lag.max=45, main='(0,1,2)   Model Residuals')
+
+```
+
+There is a clear pattern present in ACF/PACF and model residuals plots repeating at lag 5, 27 This suggests that our model may be better off with a different specification, such as p = 7 or q = 7. 
+
+We can repeat the fitting process allowing for the MA(7) component and examine diagnostic plots again. This time, there are no significant autocorrelations present. If the model is not correctly specified, that will usually be reflected in residuals in the form of trends, skeweness, or any other patterns not captured by the model. Ideally, residuals should look like white noise, meaning they are normally distributed. A convenience function tsdisplay() can be used to plot these model diagnostics. Residuals plots show a smaller error range, more or less centered around 0. We can observe that AIC is smaller for the (1, 1, 7) structure as well:
+
+
+```{r}
+fit2 = arima(deseasonal_csent, order=c(1,1,7))
+
+fit2
+
+tsdisplay(residuals(fit2), lag.max=15, main='Seasonal Model Residuals')
+```
+

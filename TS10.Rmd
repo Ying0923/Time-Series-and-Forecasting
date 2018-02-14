@@ -1,0 +1,1249 @@
+---
+title: "Predict431-TS9-CODE"
+
+output: word_document
+    
+---
+<style>
+body {
+    position: absolute;
+    left: 10px;}
+</style>
+
+<style type="text/css">
+
+.main-container {
+  max-width: 1280px;
+}
+
+</style>
+
+
+```{r setup, include=FALSE}
+
+knitr::opts_chunk$set(echo = FALSE, warning =FALSE, error=FALSE,message=FALSE)
+
+
+```
+
+
+
+```{r}
+
+setwd("C:/Users/Admin/Dropbox/Northwestern University/Predict413/Final/")
+
+```
+
+
+```{r}
+
+# install.packages("PerformanceAnalytics")
+#### load libraries #### 
+
+library(PerformanceAnalytics) 
+
+library(quantmod)
+library(rugarch)
+library(car)
+library(FinTS)
+library(rmgarch)
+options(digits=4)
+
+#### import data #### 
+
+# download data 
+symbol.vec = c("XOM", "CVX")
+getSymbols(symbol.vec, from ="2013-01-01", to = "2016-12-31") 
+
+
+# View(XOM)
+# View(CVX)
+
+```
+
+
+
+```{r}
+
+options(digits=8)
+library("fBasics")
+basicStats(XOM)
+basicStats(CVX)
+
+```
+
+
+
+```{r}
+
+par(mfcol=c(2,2))
+
+h5<-hist(XOM$XOM.Adjusted , breaks=20, main="XOM", xlab="Adjusted Prices ", col = "blue")
+
+h6<-hist(CVX$CVX.Adjusted , breaks=20, main="CVX", xlab="AdjustedPrices" , col = "green")
+
+
+
+qqnorm(XOM$XOM.Adjusted, main = "Q-Q Plot for XOM",
+             col =  "blue",cex.axis = 1.5, cex = 1.5); qqline(XOM$XOM.Adjusted)
+
+qqnorm(CVX$CVX.Adjusted, main = "Q-Q Plot for CVX",
+             col =  "green",cex.axis = 1.5, cex = 1.5); qqline(CVX$CVX.Adjusted)
+
+par(mfcol=c(1,1))
+
+```
+```{r}
+
+# plot prices
+
+plot(XOM$XOM.Adjusted, main ="XOM Daily Adjusted Price ")
+plot(CVX$CVX.Adjusted, main ="CVX Daily Adjusted Price ")
+
+
+```
+
+
+```{r}
+
+# calculate log-returns for GARCH analysis
+XOM.ret = CalculateReturns(XOM$XOM.Adjusted, method="log")
+CVX.ret = CalculateReturns(CVX$CVX.Adjusted, method="log")
+
+XOM.ret<- XOM.ret[-1]
+CVX.ret<- CVX.ret[-1]
+
+colnames(XOM.ret) ="XOM"
+colnames(CVX.ret) = "CVX"
+
+```
+
+
+```{r}
+
+par(mfcol=c(2,2))
+
+h5<-hist(XOM.ret, breaks=20, main="XOM.Adjusted ", xlab="log-returns" , col = "blue")
+
+h6<-hist(CVX.ret, breaks=20, main="CVX.Adjusted", xlab="log-returns", col = "green")
+
+qqnorm(XOM.ret, main = "Q-Q Plot for XOM log-returns",
+             col =  "blue",cex.axis = 1.5, cex = 1.5); qqline(XOM.ret)
+qqnorm(CVX.ret, main = "Q-Q Plot for CVX log-returns",
+             col =  "green",cex.axis = 1.5, cex = 1.5); qqline(CVX.ret)
+
+par(mfcol=c(1,1))
+
+```
+
+
+```{r}
+
+# create combined data series
+XOM.CVX.ret = merge(XOM.ret,CVX.ret)
+
+```
+
+
+
+```{r}
+
+basicStats_combined <- basicStats(XOM.CVX.ret)
+
+library("knitr","xtable")
+
+kable(basicStats_combined[c('Mean', 'Median', 'Stdev', 'Skewness', 'Kurtosis', 'Minimum', 'Maximum'), ],
+      format="pandoc", caption="Basic Statistics of XOM and CVX log returns")
+
+```
+
+
+
+
+
+```{r}
+
+# plot returns
+plot(XOM.ret)
+plot(CVX.ret)
+
+
+```
+
+
+```{r}
+
+# scatterplot of returns
+plot( coredata(XOM.ret), coredata(CVX.ret), xlab="XOM log return", ylab="CVX log return",
+      type="p", pch=16, lwd=2, col="blue")
+abline(h=0,v=0)
+
+
+```
+
+
+
+
+```{r}
+
+
+d1=density(XOM.ret)
+d2=density(CVX.ret)
+
+par(mfcol=c(1,2))
+plot(d1$x,d1$y,xlab='returns',ylab='density',main="XOM Log Returns Density",type='l')
+plot(d2$x,d2$y,xlab='returns',ylab='density',main="CVX Log Returns Density",type='l')
+
+
+
+```
+
+
+```{r}
+
+# Shapiro-Wilk test
+# shapiro.test() strictly takes in vectors.
+
+shapiro.test(as.vector(XOM.ret))
+
+shapiro.test(as.vector(CVX.ret))
+
+
+```
+
+
+
+
+
+
+### 1.2 Tests
+
+Include a test of the null hypothesis that the mean of each of the series returns is zero. 
+
+
+```{r}
+# XOM
+
+t.test(XOM.ret)
+
+
+
+# CVX
+
+t.test(CVX.ret)
+
+```
+
+
+Third Moment: Skewness
+
+Test H0: m3 = 0 vs. Ha: m3 != 0, where m3 denotes skewness of the log returns
+
+Testing the symmetry of the series with respect to the mean
+
+Compute p-value
+
+
+```{r}
+
+# XOM
+
+XOM.ret.skew <- skewness(XOM.ret)/sqrt(6/length(XOM.ret))
+
+XOM.ret.skew
+
+XOM.ret.skew.pv <- 2*(1-pnorm(abs(XOM.ret.skew)))
+
+XOM.ret.skew.pv
+
+
+# CVX
+
+CVX.ret.skew <- skewness(CVX.ret)/sqrt(6/length(CVX.ret))
+
+CVX.ret.skew
+
+CVX.ret.skew.pv <- 2*(1-pnorm(abs(CVX.ret.skew)))
+
+CVX.ret.skew.pv
+
+
+```
+
+ Test H0 : K = 3 vs. Ha : K 6= 3, where K denotes the kurtosis.
+ 
+ 
+```{r}
+
+
+# XOM.ret
+
+XOM.ret.kurt <- kurtosis(XOM.ret)/sqrt(24/length(XOM.ret))
+
+XOM.ret.kurt
+
+XOM.ret.kurt.pv <- 2*(1-pnorm(abs(XOM.ret.kurt))); XOM.ret.kurt.pv
+
+
+
+# CVX
+
+CVX.ret.kurt <- kurtosis(CVX.ret)/sqrt(24/length(CVX.ret))
+CVX.ret.kurt
+CVX.ret.kurt.pv <- 2*(1-pnorm(abs(CVX.ret.kurt))); CVX.ret.kurt.pv
+
+
+```
+
+
+
+
+### 1.3 Box-Jenkins
+
+Use the Box-Jenkins methodology to perform univariate time series model ???tting to each of the series. Include details of each step of the model-building process, and support your ???nal model selection for each series.
+
+
+-- The Box-Jenkins methodology is a strategy or procedure that can be used to build an ARIMA model. 
+
+if you keep repeating this process - estimating lots and lots of ARIMA models - you will eventually be able to select a model with the lowest Akaike Information criterion (from the set of models that you have estimated). In this context, a more systematic approach would be to use an algorithm based on comparing AIC values for a variety of different models to automatically select an ARIMA model for you, such as the one provided by the forecast package in R - the relevant function name is auto.arima().
+
+In any event, the procedure you outlined involved selecting an ARIMA model based on minimizing some information criterion (in this case, AIC, but there are other measures
+
+
+
+
+```{r}
+
+
+# Model Identification
+
+#--------------------------------------
+
+
+
+# Apply ADF test - check for unit-root nonstationarity
+
+# If p-value > alpha, then fail to reject H0: that series is unit-root
+
+#   nonstationary (i.e. a unit-root is likely present); suggests differencing
+
+#   is required
+
+
+library("tseries")
+
+adf.test(XOM.ret, alternative = "stationary")
+
+
+adf.test(CVX.ret, alternative = "stationary")
+
+
+
+
+```
+
+
+```{r}
+#library ("forecast")
+#tsdisplay(XOM.ret, main = "XOM.ret")
+
+
+# Are there serial correlations in the log return?
+
+# ACF plot of series for checking serial correlations in series
+
+# ACF plot of abs(series) for checking dependence in series
+
+library ("forecast")
+tsdisplay(XOM.ret, main = "XOM Daily Log Return")
+
+#acf(XOM.ret, 25, xlim = c(1, 25), ylim = c(-0.2, 0.2))
+#pacf(XOM.ret, 25, ylim = c(-0.1, 0.1))
+
+
+tsdisplay(CVX.ret, main = " CVX Daily Log Return")
+
+```
+```{r}
+
+m1 = ar(XOM.ret)
+print(m1)
+
+
+m2 = ar(CVX.ret)
+print(m2)
+
+```
+```{r}
+
+auto.arima(XOM.ret, stationary = T, trace = T, approx = F, allowmean = F)
+
+
+auto.arima(XOM.ret, seasonal=FALSE)
+
+
+```
+
+```{r}
+
+adf.test(XOM.ret, k=4)
+
+```
+
+
+```{r}
+
+Box.test(XOM.ret, lag = 4, type = "Ljung")
+
+
+Box.test(CVX.ret, lag = 10, type = "Ljung")
+
+```
+
+
+
+
+We'll now use the arima method to create an AR(4,0,0) model for XOM.ret
+
+```{r}
+
+m1_xom = arima(XOM.ret, order = c(4, 0, 0), include.mean = FALSE)
+print(m1_xom)
+
+```
+
+
+
+```{r  fig.width=10,fig.height=10}
+
+tsdiag(m1_xom, gof.lag = 24)
+
+```
+
+```{r}
+
+Box.test(m1_xom$residuals, lag = 10, type = "Ljung")
+
+```
+
+```{r}
+
+acf(residuals(m1_xom), 25, xlim = c(1, 25), ylim = c(-0.2, 0.2))
+
+pacf(residuals(m1_xom), 25, ylim = c(-0.2, 0.2))
+
+```
+
+```{r}
+
+
+
+hist(m1_xom$residuals , breaks=20, main="XOM Model Residuals" , col = "blue")
+
+
+
+qqnorm(m1_xom$residuals, main = "Q-Q Plot for XOM Model Residuals",
+             col =  "blue",cex.axis = 1.5, cex = 1.5); qqline(XOM.ret)
+
+par(mfcol=c(1,1))
+
+```
+
+
+```{r}
+
+auto.arima(CVX.ret, stationary = T, trace = T, approx = F, allowmean = F)
+
+```
+
+```{r}
+
+m1_cvx = arima(CVX.ret, order = c(2, 0, 2), include.mean = FALSE)
+print(m1_cvx)
+
+
+```
+```{r  fig.width=10,fig.height=10}
+
+tsdiag(m1_cvx, gof.lag = 24)
+
+```
+
+
+```{r}
+
+Box.test(m1_cvx$residuals, lag = 10, type = "Ljung")
+
+```
+
+```{r}
+
+acf(residuals(m1_cvx), 25, xlim = c(1, 25), ylim = c(-0.2, 0.2))
+
+pacf(residuals(m1_cvx), 25, ylim = c(-0.2, 0.2))
+
+```
+
+
+
+```{r}
+
+
+
+hist(m1_cvx$residuals , breaks=20, main="CVX Model Residuals" , col = "green")
+
+
+
+qqnorm(m1_cvx$residuals, main = "Q-Q Plot for CVX Model Residuals",
+             col =  "green",cex.axis = 1.5, cex = 1.5); qqline(XOM.ret)
+
+par(mfcol=c(1,1))
+
+```
+
+
+#### 1.3 Forecast
+
+```{r}
+
+library("forecast")
+
+
+xom_forecast <- forecast.Arima(m1_xom, h=19)
+xom_forecast
+
+```
+```{r}
+
+plot.forecast(xom_forecast)
+
+```
+
+```{r}
+
+
+
+cvx_forecast <- forecast.Arima(m1_cvx, h=19)
+cvx_forecast
+
+
+```
+
+
+```{r}
+
+plot.forecast(cvx_forecast)
+
+```
+```{r}
+
+# Are there ARCH effects in the log return series? Why or why not?
+
+# Ljung-Box test
+
+#------------------
+
+# Use squared series
+
+# H0: first m lags of ACF of squared series = 0
+
+# If we reject H0:, series shows strong ARCH effects
+
+
+
+# Test at lag 10 - reject H0:
+
+XOM.ret.arch <- (XOM.ret - mean(XOM.ret))
+
+Box.test(XOM.ret.arch^2, lag = 10, type = "Ljung")
+
+```
+```{r}
+
+
+acf(XOM.ret.arch^2, 25, xlim = c(1, 25), ylim = c(-0.2, 0.2))
+
+pacf(XOM.ret.arch^2, 25, ylim = c(-0.2, 0.2))
+     
+     
+```
+
+
+
+```{r}
+
+
+library(fGarch)
+XOM.m2 <- garchFit(~arma(4,0)+garch(1, 1), data = XOM.ret.arch, trace = F)
+
+summary(XOM.m2)
+
+
+
+```
+
+
+
+```{r}
+
+XOM.m2.res <- residuals(XOM.m2, standardize = T)
+
+
+
+# Q-Q Plot
+
+qqnorm(XOM.m2.res); qqline(XOM.m2.res)
+
+```
+
+```{r}
+
+
+# Shapiro test of normality - H0: iid normal
+
+shapiro.test(XOM.m2.res)
+
+```
+
+```{r}
+
+# Model 2: GARCH(1,1) | Student-t Innovation
+
+# Build model
+
+XOM.m3 <- garchFit(~arma(4, 0) +garch(1, 1), data = XOM.ret.arch, trace = F, 
+                       cond.dist = "std" , include.mean = F)
+
+
+summary(XOM.m3)
+
+
+
+
+```
+
+
+
+```{r}
+
+
+XOM.m3.res <- residuals(XOM.m3, standardize = T)
+
+
+
+# Q-Q Plot
+
+qqnorm(XOM.m3.res); qqline(XOM.m3.res)
+
+
+```
+
+
+```{r}
+
+
+
+# Shapiro test of normality - H0: iid normal
+
+shapiro.test(XOM.m3.res)
+
+
+```
+
+
+```{r}
+
+acf(XOM.m3.res, 25, xlim = c(1, 25), ylim = c(-0.1, 0.1))
+
+pacf(XOM.m3.res, 25, ylim = c(-0.1, 0.1))
+
+```
+
+
+
+
+
+```{r}
+
+
+CVX.ret.arch <- (CVX.ret - mean(CVX.ret))
+
+Box.test(CVX.ret.arch^2, lag = 10, type = "Ljung")
+
+```
+
+```{r}
+
+
+acf(CVX.ret.arch^2, 25, xlim = c(1, 25), ylim = c(-0.2, 0.2))
+
+
+pacf(CVX.ret.arch^2, 25, ylim = c(-0.2, 0.2))
+     
+     
+```
+
+
+```{r}
+
+
+library(fGarch)
+
+CVX.m2 <- garchFit(~arma(2,2)+garch(1, 1), data = CVX.ret.arch, trace = F)
+
+summary(CVX.m2)
+
+```
+
+```{r}
+
+CVX.m2.res <- residuals(CVX.m2, standardize = T)
+
+# Q-Q Plot
+
+qqnorm(CVX.m2.res); qqline(CVX.m2.res)
+```
+
+```{r}
+
+# Shapiro test of normality - H0: iid normal
+
+shapiro.test(CVX.m2.res)
+
+```
+
+```{r}
+
+acf(CVX.m2.res, 25, xlim = c(1, 25), ylim = c(-0.1, 0.1))
+
+pacf(CVX.m2.res, 25, ylim = c(-0.1, 0.1))
+
+```
+
+```{r}
+
+# Model 2: GARCH(1,1) | Student-t Innovation
+
+# Build model
+
+CVX.m3 <- garchFit(~arma(2,2)+garch(1, 1), data = CVX.ret.arch, trace = F, 
+                       cond.dist = "std", include.mean = F)
+
+summary(CVX.m3)
+```
+
+
+```{r}
+
+CVX.m3.res <- residuals(CVX.m3, standardize = T)
+
+# Q-Q Plot
+
+qqnorm(CVX.m3.res); qqline(CVX.m3.res)
+
+```
+
+```{r}
+
+shapiro.test(CVX.m3.res)
+
+```
+
+```{r}
+
+acf(CVX.m3.res, 25, xlim = c(1, 25), ylim = c(-0.1, 0.1))
+
+pacf(CVX.m3.res, 25, ylim = c(-0.1, 0.1))
+
+
+```
+
+```{r}
+
+
+# Obtain the 1-step to 5-step ahead mean and volatility forecasts using the
+
+#   fitted ARMA-GARCH model with Student-t innovations.
+
+
+
+# Note: standardDeviation value is volatility forecast
+
+xom.predict <- predict(XOM.m3, n.ahead = 1, h=19); xom.predict
+
+
+
+```
+
+```{r}
+
+cvx.predict <- predict(CVX.m3, n.ahead = 1); xom.predict
+
+```
+
+
+```{r}
+
+"ccm" <- function(x,lags=12,level=FALSE){
+# Compute and plot the cross-correlation matrices.
+# lags: number of lags used.
+# level: logical unit for printing.
+# Created by R.S. Tsay, March 2009
+#
+if(!is.matrix(x))x=as.matrix(x)
+T=nrow(x)
+k=ncol(x)
+if(lags < 1)lags=1
+
+# remove the sample means
+av=apply(x,2,mean)
+y=x
+for (j in 1:k){
+y[,j]=x[,j]-av[j]
+}
+V1=cov(y)
+print("Covariance matrix:")
+print(V1,digits=3)
+se=sqrt(diag(V1))
+SD=diag(1/se)
+S0=SD%*%V1%*%SD
+ksq=k*k
+wk=matrix(0,ksq,(lags+1))
+wk[,1]=c(S0)
+j=0
+cat("CCM at lag: ",j,"\n")
+print(S0,digits=3)
+y=y%*%SD
+crit=2.326/sqrt(T)
+cat("Simplified matrix:","\n")
+for (j in 1:lags){
+y1=y[1:(T-j),]
+y2=y[(j+1):T,]
+Sj=t(y2)%*%y1/T
+Smtx=matrix(".",k,k)
+for (ii in 1:k){
+for (jj in 1:k){
+if(Sj[ii,jj] > crit)Smtx[ii,jj]="+"
+if(Sj[ii,jj] < -crit)Smtx[ii,jj]="-"
+}
+}
+cat("CCM at lag: ",j,"\n")
+for (ii in 1:k){
+cat(Smtx[ii,],"\n")
+}
+if(level){
+cat("Correlations:","\n")
+print(Sj,digits=3)
+}
+wk[,(j+1)]=c(Sj)
+
+}
+par(mfcol=c(k,k))
+if(k > 3)par(mfcol=c(3,3))
+tdx=c(0,1:lags)
+jcnt=0
+for (j in 1:ksq){
+plot(tdx,wk[j,],type='h',xlab='lag',ylab='ccf',ylim=c(-1,1))
+abline(h=c(0))
+crit=2/sqrt(T)
+abline(h=c(crit),lty=2)
+abline(h=c(-crit),lty=2)
+jcnt=jcnt+1
+if(jcnt==9){
+jcnt=0
+cat("Hit return for more: ","\n")
+readline()
+}
+#
+}
+par(mfcol=c(1,1))
+
+ccm<-list(ccm=wk)
+
+}
+
+```
+
+
+```{r  fig.width=10,fig.height=10}
+
+ccm(XOM.CVX.ret, 5)
+
+```
+
+
+
+```{r}
+
+"mq" <- function(x,lag=24){
+# Compute multivariate Ljung-Box test statistics
+#
+if(!is.matrix(x))x=as.matrix(x)
+nr=nrow(x)
+nc=ncol(x)
+g0=var(x)
+ginv=solve(g0)
+qm=0.0
+cat("        m,  Q(m)    and p-value:","\n")
+df = 0
+pvs=NULL
+for (i in 1:lag){
+  x1=x[(i+1):nr,]
+  x2=x[1:(nr-i),]
+  g = cov(x1,x2)
+  g = g*(nr-i-1)/(nr-1)
+  h=t(g)%*%ginv%*%g%*%ginv
+  qm=qm+nr*nr*sum(diag(h))/(nr-i)
+  df=df+nc*nc
+  pv=1-pchisq(qm,df)
+  pvs=c(pvs,pv)
+  print(c(i,qm,pv),digits=5)
+}
+par(mfcol=c(1,1))
+plot(pvs,ylim=c(0,1),main="p-values of Ljung-Box statistics")
+abline(h=c(0))
+lines(rep(0.05,lag),lty=2,col='blue')
+}
+
+```
+
+```{r}
+
+# Test the following hypotheses using a 5% significance level:
+
+#   H0: p1 = ... = pn = 0
+
+#   Ha: pi != 0 for some i, where {1, ..., n}
+
+mq(XOM.CVX.ret, lag = 10)
+
+```
+```{r}
+# Using a 30-day moving window, compute and plot rolling covariances and
+
+#   correlations. Briefly comment on what you see.
+
+
+
+#--------------------------------------
+
+# Compute and plot rolling correlations and covariances
+
+#--------------------------------------
+
+
+
+# Specify correlation & covariance functions
+
+cor.fun <- function(x){
+
+    cor(x)[1,2]
+
+}
+
+
+
+cov.fun <- function(x){
+
+    cov(x)[1,2]
+
+}
+
+
+
+# Window: 30 days
+
+returns.roll.cov <- rollapply(as.zoo(XOM.CVX.ret), FUN = cov.fun, width = 30,
+
+                              by.column = F, align = "right")
+
+returns.roll.cor <- rollapply(as.zoo(XOM.CVX.ret), FUN = cor.fun, width = 30,
+
+                              by.column = F, align = "right")
+
+# Plots
+
+plot(returns.roll.cov, main = "XOM & CVX: 30-day Rolling Covariances",
+
+     ylab = "Covariance", lwd = 2, col = "blue")
+
+grid()
+
+abline(h = cov(XOM.CVX.ret)[1,2], lwd = 2, col = "red")
+
+
+
+plot(returns.roll.cor, main = "XOM & CVX: 30-day Rolling Correlations",
+
+     ylab = "Correlation", lwd = 2, col = "blue")
+
+grid()
+
+abline(h = cor(XOM.CVX.ret)[1,2], lwd = 2, col = "red")
+
+
+```
+
+```{r}
+
+#--------------------------------------
+
+# Compute and plot EWMA correlations and covariances
+
+# Use lambda = 0.94
+
+#--------------------------------------
+
+
+
+# EWMA covariance
+
+returns.cov.ewma <- covEWMA(as.data.frame(XOM.CVX.ret), lambda = 0.94)
+
+
+
+# EWMA conditional covariance
+
+returns.cond.cov <- returns.cov.ewma[, 2, 1]
+
+
+
+# EWMA conditional correlation
+
+t <- length(returns.cov.ewma[, 1, 1])
+
+returns.cond.cor <- rep(0, t)
+
+for (i in 1:t) {
+
+    returns.cond.cor[i]<- cov2cor(returns.cov.ewma[i, , ])[1, 2]
+
+}
+
+
+
+# Plots
+
+plot(x = time(as.zoo(XOM.CVX.ret)), y = returns.cond.cov, type = "l", xlab = "Time", 
+
+     ylab = "Covariance", lwd = 2, col = "blue",
+
+     main = "XOM & CVX: EWMA Covariance")
+
+grid()
+
+abline(h = cov(XOM.CVX.ret)[1, 2], lwd = 2, col = "red")
+
+
+
+plot(x = time(as.zoo(XOM.CVX.ret)), y = returns.cond.cor, type = "l", xlab = "Time",
+
+     ylab = "Correlation", lwd = 2, col = "blue",
+
+     main = "XOM & CVX: EWMA Correlation")
+
+grid()
+
+abline(h = cor(XOM.CVX.ret)[1, 2], lwd = 2, col = "red")
+
+
+```
+
+```{r}
+
+# Use dccfit() from {rmgarch}, and estimate the normal-DCC(1,1) model
+
+# Comment on the estimated coefficients and the model fit
+
+
+
+# Specification of DCC model for each series - univariate normal GARCH(1,1)
+#
+# DCC estimation
+#
+
+# univariate normal GARCH(1,1) for each series
+garch11.spec = ugarchspec(mean.model = list(armaOrder = c(0,0)), 
+                          variance.model = list(garchOrder = c(1,1), 
+                          model = "sGARCH"), 
+                          distribution.model = "norm")
+
+# dcc specification - GARCH(1,1) for conditional correlations
+
+# Multivariate specification of DCC specification for conditional correlations
+dcc.garch11.spec = dccspec(uspec = multispec( replicate(2, garch11.spec) ), 
+                           dccOrder = c(1,1), 
+                           distribution = "mvnorm")
+
+# Validate specification of DCC model
+dcc.garch11.spec
+
+```
+```{r}
+
+# Build model
+
+dcc.fit = dccfit(dcc.garch11.spec, data = XOM.CVX.ret)
+
+# Explore available parameters and results
+class(dcc.fit)
+slotNames(dcc.fit)
+names(dcc.fit@mfit)
+names(dcc.fit@model)
+
+# many extractor functions - see help on DCCfit object
+# coef, likelihood, rshape, rskew, fitted, sigma, 
+# residuals, plot, infocriteria, rcor, rcov
+# show, nisurface
+
+# show dcc fit
+dcc.fit
+```
+```{r}
+
+
+# Examine residuals for normality assumption
+
+# Assign standardized residuals
+
+
+
+
+hist(dcc.fit@mfit$stdresid , breaks=20, main="dcc.fit residuals", xlab="Model Residuals")
+
+
+# Q-Q Plot
+
+qqnorm(dcc.fit@mfit$stdresid); qqline(dcc.fit@mfit$stdresid)
+
+```
+
+
+```{r}
+
+"mq" <- function(x,lag=24){
+# Compute multivariate Ljung-Box test statistics
+#
+if(!is.matrix(x))x=as.matrix(x)
+nr=nrow(x)
+nc=ncol(x)
+g0=var(x)
+ginv=solve(g0)
+qm=0.0
+cat("        m,  Q(m)    and p-value:","\n")
+df = 0
+pvs=NULL
+for (i in 1:lag){
+  x1=x[(i+1):nr,]
+  x2=x[1:(nr-i),]
+  g = cov(x1,x2)
+  g = g*(nr-i-1)/(nr-1)
+  h=t(g)%*%ginv%*%g%*%ginv
+  qm=qm+nr*nr*sum(diag(h))/(nr-i)
+  df=df+nc*nc
+  pv=1-pchisq(qm,df)
+  pvs=c(pvs,pv)
+  print(c(i,qm,pv),digits=5)
+}
+par(mfcol=c(1,1))
+plot(pvs,ylim=c(0,1),main="p-values of Ljung-Box statistics")
+abline(h=c(0))
+lines(rep(0.05,lag),lty=2,col='blue')
+}
+
+```
+
+```{r}
+
+
+# Test the following hypotheses using a 5% significance level:
+
+#   H0: p1 = ... = pn = 0
+
+#   Ha: pi != 0 for some i, where {1, ..., n}
+
+mq(dcc.fit@mfit$stdresid)
+
+```
+
+
+
+
+```{r  fig.width=10,fig.height=10}
+# conditional sd of each series
+plot(dcc.fit, which=2)
+
+```
+
+
+```{r}
+# conditional correlation
+plot(dcc.fit, which=4, main="", sub="")
+
+
+```
+
+```{r}
+# extracting correlation series
+ts.plot(rcor(dcc.fit)[1,2,])
+
+```
+
+
+
+```{r}
+# Q1F
+
+#======================================
+
+
+
+# Compute and plot the first 100 h-step ahead forecasts of the conditional
+
+#   covariance and correlation of the fitted model
+
+
+#
+# forecasting conditional volatility and correlations
+#
+
+# Build model
+
+dcc.fcst = dccforecast(dcc.fit, n.ahead=19)
+
+# Explore available parameters and results
+
+class(dcc.fcst)
+slotNames(dcc.fcst)
+class(dcc.fcst@mforecast)
+names(dcc.fcst@mforecast)
+
+# many method functions - see help on DCCforecast class
+# rshape, rskew, fitted, sigma, plot, rcor, rcov, show
+
+
+```
+
+
+```{r}
+
+
+# show forecasts
+dcc.fcst
+
+```
+
+
+```{r}
+
+# Method 1
+
+# Note: second part fails, see Method 2 below
+
+#------------------
+
+# Conditional Covariances
+
+plot(dcc.fcst, which = 3)
+
+```

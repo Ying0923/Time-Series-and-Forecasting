@@ -1,0 +1,978 @@
+
+---
+title: "Predict431-TS6-CODE"
+
+output: word_document
+    
+---
+<style>
+body {
+    position: absolute;
+    left: 10px;}
+</style>
+
+<style type="text/css">
+
+.main-container {
+  max-width: 1280px;
+}
+
+</style>
+
+
+```{r setup, include=FALSE}
+
+knitr::opts_chunk$set(echo = FALSE, warning =FALSE, error=FALSE,message=FALSE)
+
+
+```
+
+
+
+
+
+
+```{r}
+
+setwd("C:/Users/Admin/Dropbox/Northwestern University/Predict413/Assignment 6/")
+
+```
+
+
+
+The daily returns of Microsoft (msft) stock from January 1961 to December 2013. The data are available from CRSP and in the ???le d-msft3dx0113.txt Obtain the log return series of BA stock. The following list defines the variables: 
+
+. PERMNO: price end of period 
+. date: year month day (monthly data) 
+. msft: monthy returns 
+. vwretd: unused for this assignment 
+. ewretd: unused for this assignment 
+. sprtrn: unused for this assignment
+
+
+
+```{r}
+
+
+MS_data <- read.table("d-msft3dx0113.txt",header=T)
+head(MS_data)
+
+MonthlyReturn <-MS_data$msft
+
+```
+
+#### Q1:EDA
+
+
+Data Summaries and Tables
+
+
+```{r}
+
+
+library("fBasics")
+basicStats_MS <- basicStats(MS_data)
+
+library("knitr","xtable")
+
+kable(basicStats_MS[c('Mean', 'Median', 'Stdev', 'Skewness', 'Kurtosis', 'Minimum', 'Maximum'), c(3:6)],
+      format="pandoc", caption="Basic Statistics of Microsoft (msft) stock")
+
+
+```
+
+
+
+```{r}
+
+par(mfcol=c(1,2))
+
+h1<-hist(MonthlyReturn, breaks=20, main=" Monthly Return Histogram", xlab="Monthly Return")
+# axis(side=1, at=seq(0,82,1), pos=0, las=0)
+
+abline(v = mean(MonthlyReturn , na.rm = TRUE), col = "red", lwd = 2, lty = 2)
+abline(v = median(MonthlyReturn, na.rm = TRUE), col = "green", lwd = 2, lty = 2)
+
+xfit1<-seq(min(MonthlyReturn, na.rm = TRUE),max(MonthlyReturn, na.rm = TRUE), length=40)
+yfit1<-dnorm(xfit1, mean = mean(MonthlyReturn, na.rm = TRUE), sd=sd(MonthlyReturn, na.rm = TRUE))
+yfit1<-yfit1*diff(h1$mids[1:2]*length(MonthlyReturn))
+lines(xfit1, yfit1, col="blue",lwd=2)
+
+legend("topright",  # location of legend within plot area
+c("Density plot", "Mean--0.00044", "Median--0.00000"),
+col = c("blue", "red", "green"),
+lwd = c(2, 2, 2), lty= c(1, 2, 2), cex = 0.6)
+
+
+qqnorm(MonthlyReturn); qqline(MonthlyReturn)
+
+
+
+```
+
+
+
+The montly return is not normally distributed, transform to log
+
+```{r}
+
+
+MonthlyReturn.log <- log(MonthlyReturn + 1)
+
+
+```
+
+
+```{r}
+
+basicStats(MonthlyReturn.log)
+
+```
+
+
+```{r}
+
+par(mfcol=c(1,2))
+h2<-hist(MonthlyReturn.log, breaks=20, main=" Monthly Log Return Histogram", xlab="Log (Monthly Return)")
+# axis(side=1, at=seq(0,82,1), pos=0, las=0)
+
+abline(v = mean(MonthlyReturn.log , na.rm = TRUE), col = "red", lwd = 2, lty = 2)
+abline(v = median(MonthlyReturn.log, na.rm = TRUE), col = "green", lwd = 2, lty = 2)
+
+xfit2<-seq(min(MonthlyReturn.log, na.rm = TRUE),max(MonthlyReturn.log, na.rm = TRUE), length=40)
+yfit2<-dnorm(xfit2, mean = mean(MonthlyReturn.log, na.rm = TRUE), sd=sd(MonthlyReturn.log, na.rm = TRUE))
+yfit2<-yfit2*diff(h2$mids[1:2]*length(MonthlyReturn.log))
+lines(xfit2, yfit2, col="blue",lwd=2)
+
+legend("topright",  # location of legend within plot area
+c("Density plot", "Mean--0.000260", "Median--0.000000"),
+col = c("blue", "red", "green"),
+lwd = c(2, 2, 2), lty= c(1, 2, 2), cex = 0.6)
+
+qqnorm(MonthlyReturn.log); qqline(MonthlyReturn.log)
+
+
+
+```
+
+
+```{r}
+
+
+# Convert to time series
+
+ts.MonthlyReturn.log<- ts(MonthlyReturn.log, start = c(2001, 1, 3), frequency = 252)
+
+
+# Plot the time series
+
+plot(ts.MonthlyReturn.log, xlab = "Year", ylab = "Returns", 
+
+     main = "Daily Returns of Microsoft Natual Log")
+
+
+
+```
+
+```{r}
+
+# ACF & PACF
+
+par(mfcol = c(1, 1))
+
+acf(ts.MonthlyReturn.log)
+
+pacf(ts.MonthlyReturn.log)
+
+
+
+```
+```{r}
+
+# 1.1 -- Is the expected log return zero?
+
+t.test(ts.MonthlyReturn.log)
+
+```
+
+```{r}
+
+
+acf(MonthlyReturn.log, 25, xlim = c(1, 25), ylim = c(-0.2, 0.4))
+
+acf(abs(MonthlyReturn.log), 25, xlim = c(1, 25), ylim = c(-0.2, 0.4))
+
+
+
+```
+
+
+```{r}
+# 1.1 Are there any serial correlations in the log returns?
+
+# Ljung-Box test
+
+Box.test(MonthlyReturn.log, lag = 10, type = "Ljung")
+
+```
+#### 1.2-----------------------------------------------------
+
+```{r}
+
+library(forecast)
+
+# 1.2 ---Build a mean equation for log returns; write down the fitted model
+
+ms.log.m1 <- arima(MonthlyReturn.log, order = c(0, 0, 2), include.mean = F)
+
+ms.log.m1
+
+accuracy(ms.log.m1)
+
+qqnorm(ms.log.m1$residuals)
+qqline(ms.log.m1$residuals)
+
+
+tsdiag(ms.log.m1, gof = 25)
+
+```
+
+
+
+
+```{r}
+
+# Pormanteau test or Ljung-Box test & plot
+
+
+
+Box.test(ms.log.m1$residuals,lag=10,type='Ljung')
+Box.test(ms.log.m1$residuals^2,lag=10,type='Ljung')
+
+```
+
+```{r}
+
+acf(residuals(ms.log.m1), 25, xlim = c(1, 25), ylim = c(-0.2, 0.2))
+
+pacf(residuals(ms.log.m1), 25, ylim = c(-0.2, 0.2))
+
+```
+```{r}
+
+Box.test(residuals(ms.log.m1)^2, lag = 10, type = "Ljung")
+
+Box.test(ms.log.m1$residuals,lag=10,type='Ljung')
+Box.test(ms.log.m1$residuals^2,lag=10,type='Ljung')
+
+
+```
+
+
+
+
+```{r}
+
+library(fGarch)
+
+ms.log.m2 <- garchFit(~arma(0,2)+garch(1,1),data=MonthlyReturn.log,trace=F)
+
+# ms.log.m2
+summary(ms.log.m2)
+
+
+
+
+```
+
+
+```{r}
+
+# Q-Q Plot
+
+
+
+ms.log.m2.res <- residuals(ms.log.m2, standardize = T)
+
+qqnorm(ms.log.m2.res); qqline(ms.log.m2.res)
+
+
+```
+```{r}
+
+# Shapiro test of normality - H0: iid normal
+
+shapiro.test(ms.log.m2.res)
+
+```
+the MA(2) coefficent is not significant. Lets try MA(1) model
+
+
+
+```{r}
+
+ms.log.m3 <- garchFit(~arma(0, 1) + garch(1, 1), data = MonthlyReturn.log, trace = F, include.mean = F)
+
+
+summary(ms.log.m3)
+
+
+ms.log.m3.res <- residuals(ms.log.m3, standardize = T)
+
+
+
+```
+
+
+The shapiro-wilk test for normality shows that p value is small and the null hypothesis (Null:Residuals are normally distributed) is to be rejected.
+
+Also, the coefficient of a^2_t-2 is not significant.
+
+The Ljung Box test for 10 lags give high pvalues for Residuals and squared residuals. This shows that we cannot reject the null that there is no serial correlation.
+
+Overall the model looks adequate. But the normality assumption doesnt hold good.
+
+Model:
+
+r_t = a_t -0.043124049 * a_t-1, a_t = sigma_t * eplison_t, epsilon_t ~ N(0,1)
+
+sigma^2_t = 0.000004217 + 0.050955452 * a^2_t-1  + 0.935962124  * sigma^2_t-1
+
+
+
+```{r}
+
+acf(ms.log.m3.res, 25, xlim = c(1, 25), ylim = c(-0.1, 0.1))
+
+pacf(ms.log.m3.res, 25, ylim = c(-0.1, 0.1))
+
+acf(ms.log.m3.res^2, 25, xlim = c(1, 25), ylim = c(-0.1, 0.1))
+
+pacf(ms.log.m3.res^2, 25, ylim = c(-0.1, 0.1))
+
+```
+```{r}
+
+ms.log.m4 <- garchFit(~arma(0, 1) + garch(1, 1), data = MonthlyReturn.log, trace = F,
+
+                      cond.dist = "std", include.mean = F)
+
+
+summary(ms.log.m4)
+
+
+```
+
+```{r}
+
+
+ms.log.m4.res <- residuals(ms.log.m4, standardize = T)
+
+
+
+# Q-Q Plot
+
+qqnorm(ms.log.m4.res); qqline(ms.log.m4.res)
+
+
+
+# Shapiro test of normality - H0: iid normal
+
+shapiro.test(ms.log.m4.res)
+
+
+
+```
+```{r}
+
+acf(ms.log.m4.res, 25, xlim = c(1, 25), ylim = c(-0.1, 0.1))
+
+pacf(ms.log.m4.res, 25, ylim = c(-0.1, 0.1))
+
+
+```
+
+```{r}
+#======================================
+
+# Q1E
+
+#======================================
+
+
+
+# Obtain the 1-step to 5-step ahead mean and volatility forecasts using the
+
+#   fitted ARMA-GARCH model with Student-t innovations.
+
+
+
+# Note: standardDeviation value is volatility forecast
+
+ms.log.m4.predict <- predict(ms.log.m4, n.ahead = 5); ms.log.m4.predict
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+```{r}
+
+# Read data
+
+da <- read.table("m-ba3dx6113.txt", header = T)
+
+
+
+# Assign values
+
+ba <- da$ba
+
+
+
+# Transform to log returns
+
+ba.log <- log(ba + 1)
+
+
+
+# Explore summary stats
+
+basicStats(ba.log)
+
+library("fBasics")
+basicStats_bb <- basicStats(da)
+
+library("knitr","xtable")
+
+kable(basicStats_bb[c('Mean', 'Median', 'Stdev', 'Skewness', 'Kurtosis', 'Minimum', 'Maximum'), ],
+      format="pandoc", caption="Basic Statistics of The monthly returns of Boeing (BA) stock ")
+
+
+
+```
+
+
+```{r}
+
+# Convert to time series
+
+ts.ba.log <- ts(ba.log, start = c(1961, 1), frequency = 12)
+
+
+
+# Plot the time series
+
+plot(ts.ba.log, xlab = "Year", ylab = "Returns", 
+
+     main = "Monthly Returns of Boeing")
+
+
+
+
+```
+
+
+
+##### ACF & PACF : log ba
+```{r}
+
+# ACF & PACF
+
+par(mfcol = c(1, 1))
+acf(ba.log)
+
+pacf(ba.log)
+
+```
+
+
+##### ACF & PACF : log ba (first difference)
+
+```{r}
+
+acf(diff(ba.log))
+pacf(diff(ba.log))
+
+```
+
+
+###### 2.1 Is the expected log return zero?
+
+```{r}
+t.test(ba.log)
+```
+
+
+##### 2.1 Are there serial correlations in the log return?
+
+```{r}
+
+# ACF plot of series for checking serial correlations in series
+# ACF plot of abs(series) for checking dependence in series
+
+acf(ba.log, 25, xlim = c(1, 25), ylim = c(-0.2, 0.4))
+acf(abs(ba.log), 25, xlim = c(1, 25), ylim = c(-0.2, 0.4))
+
+```
+
+
+```{r}
+
+# Ljung-Box test
+Box.test(ba.log, lag = 12, type = "Ljung")
+
+```
+
+
+###### 2.1 Testing for ARCH effects
+
+```{r}
+
+# Specify mean equation
+# Since mean is significantly different from zero, subtract it
+ba.log.res <- (ba.log - mean(ba.log))
+
+```
+
+```{r}
+#------------------
+# Ljung-Box test
+#------------------
+# Use squared series
+# H0: first m lags of ACF of squared series = 0
+# If we reject H0:, series shows strong ARCH effects
+
+# Test at lag 12 - reject H0:
+Box.test(ba.log.res^2, lag = 12, type = "Ljung")
+```
+
+
+##### 2.2. Build a GARCH model with Gaussian innovations for the log return series
+
+```{r}
+
+# Build a GARCH model with Gaussian innovations for the log return series
+# Perform model checking and write down the fitted model
+
+ba.log.m1 <- garchFit(~garch(1, 1), data = ba.log, trace = F)
+
+summary(ba.log.m1)
+
+```
+
+##### 2.2. Model Adequacy
+
+```{r}
+
+
+# Examine residuals for normality assumption
+# Assign standardized residuals
+ba.log.m1.res <- residuals(ba.log.m1, standardize = T)
+
+# Q-Q Plot
+qqnorm(ba.log.m1.res); qqline(ba.log.m1.res)
+
+```
+
+
+```{r}
+
+# Shapiro test of normality - H0: iid normal
+shapiro.test(ba.log.m1.res)
+
+```
+
+
+```{r}
+
+# ACF & PACF 
+#   Standardized residuals - adequacy of model mean equation
+#   Standardized residuals squared - adequacy of model variance equation
+# First lag removed
+
+acf(ba.log.m1.res, 25, xlim = c(1, 25), ylim = c(-0.1, 0.1))
+pacf(ba.log.m1.res, 25, ylim = c(-0.1, 0.1))
+
+acf(ba.log.m1.res^2, 25, xlim = c(1, 25), ylim = c(-0.1, 0.1))
+pacf(ba.log.m1.res^2, 25, ylim = c(-0.1, 0.1))
+
+
+# Note: residuals do not appear to satisfy normality assumption
+
+```
+
+
+##### 2.3. Fit a GARCH model with skew-Student-t innovations to the log return series. 
+
+```{r}
+
+ba.log.m2 <- garchFit(~garch(1, 1), data = ba.log, trace = F, 
+                      cond.dist = "sstd")
+
+summary(ba.log.m2)
+
+```
+
+
+```{r}
+
+# Examine residuals for normality assumption
+# Assign standardized residuals
+ba.log.m2.res <- residuals(ba.log.m2, standardize = T)
+
+# Q-Q Plot
+qqnorm(ba.log.m2.res); qqline(ba.log.m2.res)
+
+```
+
+
+```{r}
+
+# Shapiro test of normality - H0: iid normal
+shapiro.test(ba.log.m2.res)
+
+```
+
+
+Note: residuals do not appear to satisfy normality assumption
+
+```{r}
+
+# ACF & PACF 
+# Standardized residuals - adequacy of model mean equation
+
+acf(ba.log.m2.res, 25, xlim = c(1, 25), ylim = c(-0.1, 0.1))
+pacf(ba.log.m2.res, 25, ylim = c(-0.1, 0.1))
+
+# Standardized residuals squared - adequacy of model variance equation
+
+acf(ba.log.m2.res^2, 25, xlim = c(1, 25), ylim = c(-0.1, 0.1))
+pacf(ba.log.m2.res^2, 25, ylim = c(-0.1, 0.1))
+
+
+```
+
+##### 2.3 Based on the fitted model, is the monthly log returns of Boeing skewed?
+
+```{r}
+ba.log.m2.tratio <- ((0.88820 - 1) / (0.05998)); ba.log.m2.tratio
+ba.log.m2.pv <- 2*pnorm(ba.log.m2.tratio); ba.log.m2.pv
+
+
+```
+
+
+##### 2.4. Fit a GARCM-M model to the monthly log returns. 
+
+```{r}
+"garchM" <- function(rtn,type=1){
+# Estimation of a Gaussian GARCH(1,1)-M model.
+##### The program uses GARCH(1,1) results as initial values.
+# rtn: return series 
+# type = 1 for Variance-in-mean
+#      = 2 for volatility-in-mean
+#      = 3 for log(variance)-in-mean
+#
+if(is.matrix(rtn))rtn=c(rtn[,1])
+garchMdata <<- rtn
+# obtain initial estimates
+m1=garch11FIT(garchMdata)
+est=as.numeric(m1$par); v1=m1$ht  ## v1 is sigma.t-square
+Mean=est[1]; cc=est[2]; ar=est[3]; ma=est[4]; S=1e-6
+if(type==2)v1=sqrt(v1)
+if(type==3)v1=log(v1)
+#### Obtain initial estimate of the parameters for the mean equation
+m2=lm(rtn~v1)
+Cnst=as.numeric(m2$coefficients[1])
+gam=as.numeric(m2$coefficients[2])
+params=c(mu=Cnst,gamma=gam, omega=cc, alpha=ar,beta=ma)
+lowBounds=c(mu=-5*abs(Mean),gamma=-20*abs(gam), omega=S, alpha=S, beta=ma*0.6)
+uppBounds=c(mu=5*abs(Mean),gamma=100*abs(gam), omega=cc*5 ,alpha=3*ar,beta=1-S)
+### Pass model information via defining global variable
+Vtmp <<- c(type,v1[1])
+#
+fit=nlminb(start = params, objective= glkM, lower=lowBounds, upper=uppBounds)
+##,control=list(trace=3,rel.tol=1e-5))
+epsilon = 0.0001 * fit$par
+npar=length(params)
+Hessian = matrix(0, ncol = npar, nrow = npar)
+for (i in 1:npar) {
+for (j in 1:npar) {
+x1 = x2 = x3 = x4  = fit$par
+x1[i] = x1[i] + epsilon[i]; x1[j] = x1[j] + epsilon[j]
+x2[i] = x2[i] + epsilon[i]; x2[j] = x2[j] - epsilon[j]
+x3[i] = x3[i] - epsilon[i]; x3[j] = x3[j] + epsilon[j]
+x4[i] = x4[i] - epsilon[i]; x4[j] = x4[j] - epsilon[j]
+Hessian[i, j] = (glkM(x1)-glkM(x2)-glkM(x3)+glkM(x4))/
+(4*epsilon[i]*epsilon[j])
+}
+}
+cat("Maximized log-likehood: ",-glkM(fit$par),"\n")
+# Step 6: Create and Print Summary Report:
+se.coef = sqrt(diag(solve(Hessian)))
+tval = fit$par/se.coef
+matcoef = cbind(fit$par, se.coef, tval, 2*(1-pnorm(abs(tval))))
+dimnames(matcoef) = list(names(tval), c(" Estimate",
+" Std. Error", " t value", "Pr(>|t|)"))
+cat("\nCoefficient(s):\n")
+printCoefmat(matcoef, digits = 6, signif.stars = TRUE)
+
+m3=ResiVol(fit$par)
+
+garchM <- list(residuals=m3$residuals,sigma.t=m3$sigma.t)
+}
+
+glkM = function(pars){
+rtn <- garchMdata
+mu=pars[1]; gamma=pars[2]; omega=pars[3]; alpha=pars[4]; beta=pars[5]
+type=Vtmp[1]
+nT=length(rtn)
+# use conditional variance
+if(type==1){
+ht=Vtmp[2]
+et=rtn[1]-mu-gamma*ht
+at=c(et)
+for (i in 2:nT){
+sig2t=omega+alpha*at[i-1]^2+beta*ht[i-1]
+ept = rtn[i]-mu-gamma*sig2t
+at=c(at,ept)
+ht=c(ht,sig2t)
+}
+}
+# use volatility
+if(type==2){
+ht=Vtmp[2]^2
+et=rtn[1]-mu-gamma*Vtmp[2]
+at=c(et)
+for (i in 2:nT){
+sig2t=omega+alpha*at[i-1]^2+beta*ht[i-1]
+ept=rtn[i]-mu-gamma*sqrt(sig2t)
+at=c(at,ept)
+ht=c(ht,sig2t)
+}
+}
+# use log(variance)
+if(type==3){
+ht=exp(Vtmp[2])
+et=rtn[1]-mu-gamma*Vtmp[2]
+at=c(et)
+for (i in 2:nT){
+sig2t=omega+alpha*at[i-1]^2+beta*ht[i-1]
+ept=rtn[i]-mu-gamma*log(abs(sig2t))
+at=c(at,ept)
+ht=c(ht,sig2t)
+}
+}
+#
+hh=sqrt(abs(ht))
+glk=-sum(log(dnorm(x=at/hh)/hh))
+
+glk
+}
+
+
+ResiVol = function(pars){
+rtn <- garchMdata
+mu=pars[1]; gamma=pars[2]; omega=pars[3]; alpha=pars[4]; beta=pars[5]
+type=Vtmp[1]
+nT=length(rtn)
+# use conditional variance
+if(type==1){
+ht=Vtmp[2]
+et=rtn[1]-mu-gamma*ht
+at=c(et)
+for (i in 2:nT){
+sig2t=omega+alpha*at[i-1]^2+beta*ht[i-1]
+ept = rtn[i]-mu-gamma*sig2t
+at=c(at,ept)
+ht=c(ht,sig2t)
+}
+}
+# use volatility
+if(type==2){
+ht=Vtmp[2]^2
+et=rtn[1]-mu-gamma*Vtmp[2]
+at=c(et)
+for (i in 2:nT){
+sig2t=omega+alpha*at[i-1]^2+beta*ht[i-1]
+ept=rtn[i]-mu-gamma*sqrt(sig2t)
+at=c(at,ept)
+ht=c(ht,sig2t)
+}
+}
+# use log(variance)
+if(type==3){
+ht=exp(Vtmp[2])
+et=rtn[1]-mu-gamma*Vtmp[2]
+at=c(et)
+for (i in 2:nT){
+sig2t=omega+alpha*at[i-1]^2+beta*ht[i-1]
+ept=rtn[i]-mu-gamma*log(abs(sig2t))
+at=c(at,ept)
+ht=c(ht,sig2t)
+}
+}
+#
+
+ResiVol <- list(residuals=at,sigma.t=sqrt(ht))
+}
+
+garch11FIT = function(x){
+# Step 1: Initialize Time Series Globally:
+tx <<- x
+# Step 2: Initialize Model Parameters and Bounds:
+Mean = mean(tx); Var = var(tx); S = 1e-6
+params = c(mu = Mean, omega = 0.1*Var, alpha = 0.1, beta = 0.8)
+lowerBounds = c(mu = -10*abs(Mean), omega = S^2, alpha = S, beta = S)
+upperBounds = c(mu = 10*abs(Mean), omega = 100*Var, alpha = 1-S, beta = 1-S)
+# Step 3: Set Conditional Distribution Function:
+garchDist = function(z, hh) { dnorm(x = z/hh)/hh }
+# Step 4: Compose log-Likelihood Function:
+garchLLH = function(parm) {
+mu = parm[1]; omega = parm[2]; alpha = parm[3]; beta = parm[4]
+z = tx-mu; Mean = mean(z^2)
+# Use Filter Representation:
+e = omega + alpha * c(Mean, z[-length(tx)]^2)
+h = filter(e, beta, "r", init = Mean)
+hh = sqrt(abs(h))
+llh = -sum(log(garchDist(z, hh)))
+llh }
+#####print(garchLLH(params))
+# Step 5: Estimate Parameters and Compute Numerically Hessian:
+fit = nlminb(start = params, objective = garchLLH,
+lower = lowerBounds, upper = upperBounds)
+#
+est=fit$par
+# compute the sigma.t^2 series
+z=tx-est[1]; Mean=mean(z^2)
+e=est[2]+est[3]*c(Mean,z[-length(tx)]^2)
+h=filter(e,est[4],"r",init=Mean)
+
+garch11Fit <- list(par=est,ht=h)
+}
+```
+
+
+
+```{r}
+# Fit a GARCH-M model to the monthly log returns
+# Write down the fitted model
+# Is the risk premium statistically significant?
+
+ba.log.m3 <- garchM(ba.log)
+ba.log.m3.pv <- 2*pnorm(0.65823, lower.tail = F); ba.log.m3.pv
+
+```
+
+##### 2.5. Fit a TGARCH(1,1) model to the monthly log returns
+```{r}
+Tgarch11 = function(x,cond.dist="norm")
+{
+# Estimation of TGARCH(1,1) model with Gaussian or Student-t innovations
+# Step 1: Initialize Time Series Globally:
+Tx <<- x
+# Step 2: Initialize Model Parameters and Bounds:
+Meanx = mean(Tx); Varx = var(Tx); S = 1e-6
+if(cond.dist=="std"){
+params = c(mu = Meanx, omega = 0.1*Varx, alpha = 0.1, gam1= 0.02, beta = 0.81, shape=6)
+lowerBounds = c(mu = -10*abs(Meanx), omega = S^2, alpha = S, gam1=S, beta = S, shape=3)
+upperBounds = c(mu = 10*abs(Meanx), omega = 100*Varx, alpha = 1-S, gam1 = 1-S, beta = 1-S, shape=30)
+}
+else{
+params = c(mu = Meanx, omega = 0.1*Varx, alpha = 0.1, gam1= 0.02, beta = 0.81)
+lowerBounds = c(mu = -10*abs(Meanx), omega = S^2, alpha = S, gam1=S, beta = S)
+upperBounds = c(mu = 10*abs(Meanx), omega = 10*Varx, alpha = 1-S, gam1 = 1-S, beta = 1-S)
+}
+# Step 3: Set Conditional Distribution Function:
+garchDist = function(z, hh, cond.dist, nu1) { 
+if(cond.dist=="std"){LL=dstd(x = z/hh, nu=nu1)/hh}
+else{
+LL=dnorm(x = z/hh)/hh }
+LL
+}
+# Step 4: Compose log-Likelihood Function:
+garchLLH = function(parm) {
+mu = parm[1]; omega = parm[2]; alpha = parm[3]; gam1=parm[4]; beta = parm[5]
+shape = 0; 
+if(length(parm)==6){
+shape=parm[6]
+cond.dist="std"
+}
+else
+{cond.dist="norm"}
+z = (Tx-mu); Mean = mean(z^2)
+zm1=c(0,z[-length(z)])
+idx=seq(zm1)[zm1 < 0]; z1=rep(0,length(z)); z1[idx]=1
+# Use Filter Representation:
+e = omega + alpha * c(Mean, z[-length(z)]^2) + gam1*z1*c(Mean,z[-length(z)]^2)
+h = filter(e, beta, "r", init = Mean)
+hh = sqrt(abs(h))
+llh = -sum(log(garchDist(z, hh, cond.dist, shape)))
+llh }
+# Step 5: Estimate Parameters and Compute Numerically Hessian:
+fit = nlminb(start = params, objective = garchLLH,
+lower = lowerBounds, upper = upperBounds) ### control = list(trace=3))
+epsilon = 0.0001 * fit$par
+npar=length(params)
+Hessian = matrix(0, ncol = npar, nrow = npar)
+for (i in 1:npar) {
+for (j in 1:npar) {
+x1 = x2 = x3 = x4  = fit$par
+x1[i] = x1[i] + epsilon[i]; x1[j] = x1[j] + epsilon[j]
+x2[i] = x2[i] + epsilon[i]; x2[j] = x2[j] - epsilon[j]
+x3[i] = x3[i] - epsilon[i]; x3[j] = x3[j] + epsilon[j]
+x4[i] = x4[i] - epsilon[i]; x4[j] = x4[j] - epsilon[j]
+Hessian[i, j] = (garchLLH(x1)-garchLLH(x2)-garchLLH(x3)+garchLLH(x4))/
+(4*epsilon[i]*epsilon[j])
+}
+}
+cat("Log likelihood at MLEs: ","\n")
+print(-garchLLH(fit$par))
+# Step 6: Create and Print Summary Report:
+se.coef = sqrt(diag(solve(Hessian)))
+tval = fit$par/se.coef
+matcoef = cbind(fit$par, se.coef, tval, 2*(1-pnorm(abs(tval))))
+dimnames(matcoef) = list(names(tval), c(" Estimate",
+" Std. Error", " t value", "Pr(>|t|)"))
+cat("\nCoefficient(s):\n")
+printCoefmat(matcoef, digits = 6, signif.stars = TRUE)
+# compute output
+est=fit$par
+mu = est[1]; omega = est[2]; alpha = est[3]; gam1=est[4]; beta = est[5]
+z=(Tx-mu); Mean = mean(z^2)
+zm1=c(0,z[-length(z)])
+idx=seq(zm1)[zm1 < 0]; z1=rep(0,length(z)); z1[idx]=1
+e = omega + alpha * c(Mean, z[-length(z)]^2) + gam1*z1*c(Mean,z[-length(z)]^2)
+h = filter(e, beta, "r", init = Mean)
+sigma.t = sqrt(abs(h))
+
+Tgarch11 <- list(residuals = z, volatility = sigma.t, par=est)
+}
+
+```
+
+
+
+```{r}
+# Fit a TGARCH(1,1) model to the monthly log returns
+# Write down the fitted model
+# Is the leverage effect statistically significant?
+ba.log.m4 <- Tgarch11(ba.log)
+
+# Use 1-sided t-test based on H0:
+# H0: gamma <= 0
+# Ha: gamma > 0
+ba.log.m4.tratio <- 2.54059
+ba.log.m4.pv <- pnorm(ba.log.m4.tratio, lower.tail = F); ba.log.m4.pv
+
+```
+
